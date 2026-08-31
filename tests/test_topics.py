@@ -77,3 +77,35 @@ def test_choice_without_options_rejected():
 def test_config_roundtrips_through_json():
     config = parse_topic_config(VALID)
     assert parse_topic_config_json(config.to_json()) == config
+
+
+def test_raw_must_be_dict():
+    with pytest.raises(TopicConfigError, match="顶层必须是 dict"):
+        parse_topic_config(["not", "a", "dict"])
+
+
+def test_code_must_be_string():
+    raw = {**VALID, "code": 123}
+    with pytest.raises(TopicConfigError, match="code 不能为空，且必须是字符串"):
+        parse_topic_config(raw)
+
+
+def test_time_limits_wrong_type_rejected():
+    raw = {**VALID, "time_limits": "nope"}
+    with pytest.raises(TopicConfigError, match="time_limits 必须是 dict，实际是 str"):
+        parse_topic_config(raw)
+
+
+def test_options_must_be_string_list():
+    raw = {
+        **VALID,
+        "card_fields": [{"key": "a", "label": "A", "type": "choice", "options": "abc"}],
+    }
+    with pytest.raises(TopicConfigError, match="options 必须是字符串列表"):
+        parse_topic_config(raw)
+
+
+def test_card_fields_wrong_type_rejected():
+    raw = {**VALID, "card_fields": "nope"}
+    with pytest.raises(TopicConfigError, match="card_fields 必须是 list，实际是 str"):
+        parse_topic_config(raw)

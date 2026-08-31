@@ -28,7 +28,13 @@ def build_attempt(
     kind: AttemptKind = AttemptKind.new,
     review_task_id: int | None = None,
 ) -> Attempt:
-    if data.submit_count < 1:
+    """由表单输入构造一条 Attempt。
+
+    注意：duration_bucket 与 duration_sec 允许不一致（例如 duration_bucket=within
+    但 duration_sec=9999）——这是有意为之。duration_bucket 是权威信号，
+    duration_sec 只是可选的精确记录，不要在这里加二者一致性的校验。
+    """
+    if isinstance(data.submit_count, bool) or data.submit_count < 1:
         raise ValueError(f"submit_count 必须 >= 1，实际是 {data.submit_count}")
     if data.duration_sec is not None and data.duration_sec < 0:
         raise ValueError(f"duration_sec 不能为负，实际是 {data.duration_sec}")

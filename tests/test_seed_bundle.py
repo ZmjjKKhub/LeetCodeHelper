@@ -99,3 +99,121 @@ def test_invalid_topic_config_surfaces_as_bundle_error(tmp_path):
     topic = TOPIC_YAML.replace("hard: 2100", "hard: 0")
     with pytest.raises(SeedBundleError, match="time_limits.hard 必须是正整数"):
         load_bundle(_write(tmp_path, topic=topic))
+
+
+def test_missing_topic_file_rejected(tmp_path):
+    _write(tmp_path)
+    (tmp_path / "topic.yaml").unlink()
+    with pytest.raises(SeedBundleError, match="缺少文件: topic.yaml"):
+        load_bundle(tmp_path)
+
+
+def test_topic_yaml_non_dict_rejected(tmp_path):
+    with pytest.raises(SeedBundleError, match=r"topic\.yaml 的顶层必须是 dict，实际是 NoneType"):
+        load_bundle(_write(tmp_path, topic=""))
+
+
+def test_problems_yaml_non_list_rejected(tmp_path):
+    with pytest.raises(SeedBundleError, match=r"problems\.yaml 的顶层必须是 list，实际是 dict"):
+        load_bundle(_write(tmp_path, problems="a: 1\nb: 2\n"))
+
+
+def test_templates_yaml_non_list_rejected(tmp_path):
+    with pytest.raises(SeedBundleError, match=r"templates\.yaml 的顶层必须是 list，实际是 dict"):
+        load_bundle(_write(tmp_path, templates="a: 1\n"))
+
+
+def test_plan_yaml_non_dict_rejected(tmp_path):
+    with pytest.raises(SeedBundleError, match=r"plan_default\.yaml 的顶层必须是 dict，实际是 list"):
+        load_bundle(_write(tmp_path, plan="- 1\n"))
+
+
+def test_problems_entry_not_mapping_rejected(tmp_path):
+    with pytest.raises(SeedBundleError, match="problems.yaml 里有条目不是合法的映射"):
+        load_bundle(_write(tmp_path, problems="- 209\n"))
+
+
+def test_templates_entry_not_mapping_rejected(tmp_path):
+    with pytest.raises(SeedBundleError, match="templates.yaml 里有条目不是合法的映射"):
+        load_bundle(_write(tmp_path, templates="- C\n"))
+
+
+def test_plan_day_entry_not_mapping_rejected(tmp_path):
+    plan = "name: p\nstart_date: 2026-09-01\ndays: [1]\n"
+    with pytest.raises(SeedBundleError, match="days 里有条目不是合法的映射"):
+        load_bundle(_write(tmp_path, plan=plan))
+
+
+def test_day_problems_scalar_rejected(tmp_path):
+    plan = PLAN_YAML.replace("problems: [209]", "problems: 209")
+    with pytest.raises(SeedBundleError, match="problems 必须是列表"):
+        load_bundle(_write(tmp_path, plan=plan))
+
+
+def test_empty_problems_rejected(tmp_path):
+    with pytest.raises(SeedBundleError, match="problems.yaml 不能为空"):
+        load_bundle(_write(tmp_path, problems="[]\n"))
+
+
+def test_empty_plan_days_rejected(tmp_path):
+    plan = "name: p\nstart_date: 2026-09-01\ndays: []\n"
+    with pytest.raises(SeedBundleError, match="days 不能为空"):
+        load_bundle(_write(tmp_path, plan=plan))
+
+
+def test_empty_templates_allowed(tmp_path):
+    problems = PROBLEMS_YAML.replace("  default_template: C\n", "\n")
+    bundle = load_bundle(_write(tmp_path, templates="[]\n", problems=problems))
+    assert bundle.templates == ()
+
+
+def test_duplicate_template_code_rejected(tmp_path):
+    templates = TEMPLATES_YAML + TEMPLATES_YAML
+    with pytest.raises(SeedBundleError, match="templates.yaml 的 code 重复: C"):
+        load_bundle(_write(tmp_path, templates=templates))
+
+
+def test_template_missing_code_rejected(tmp_path):
+    templates = """
+- name: 无code模板
+  language: python
+  content: "..."
+  pitfalls: "..."
+  trigger_signal: "..."
+"""
+    with pytest.raises(SeedBundleError, match="templates.yaml 里有条目缺少 code"):
+        load_bundle(_write(tmp_path, templates=templates))
+
+
+def test_lc_id_bool_rejected(tmp_path):
+    problems = PROBLEMS_YAML.replace("lc_id: 209", "lc_id: true")
+    with pytest.raises(SeedBundleError, match="lc_id 非法: True"):
+        load_bundle(_write(tmp_path, problems=problems))
+
+
+def test_day_index_bool_rejected(tmp_path):
+    plan = PLAN_YAML.replace("day_index: 1", "day_index: true")
+    with pytest.raises(SeedBundleError, match="day_index 非法: True"):
+        load_bundle(_write(tmp_path, plan=plan))
+
+
+def test_start_date_datetime_rejected(tmp_path):
+    plan = PLAN_YAML.replace("start_date: 2026-09-01", "start_date: 2026-09-01 10:00:00")
+    with pytest.raises(SeedBundleError, match="start_date 非法"):
+        load_bundle(_write(tmp_path, plan=plan))
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"topic": ""},
+        {"problems": "a: 1\nb: 2\n"},
+        {"templates": "a: 1\n"},
+        {"problems": "- 209\n"},
+        {"plan": "name: p\nstart_date: 2026-09-01\ndays: [1]\n"},
+        {"plan": PLAN_YAML.replace("problems: [209]", "problems: 209")},
+    ],
+)
+def test_malformed_yaml_shape_raises_seed_bundle_error(tmp_path, kwargs):
+    with pytest.raises(SeedBundleError):
+        load_bundle(_write(tmp_path, **kwargs))

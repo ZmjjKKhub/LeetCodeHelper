@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -66,16 +66,23 @@ class SeedBundle:
     plan: SeedPlan
 
 
-def _read_yaml(path: Path):
+def _read_yaml(path: Path, expected: type):
     if not path.exists():
         raise SeedBundleError(f"缺少文件: {path.name}")
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, expected):
+        raise SeedBundleError(
+            f"{path.name} 的顶层必须是 {expected.__name__}，实际是 {type(data).__name__}"
+        )
+    return data
 
 
-def _parse_templates(raw) -> tuple[SeedTemplate, ...]:
+def _parse_templates(raw: list) -> tuple[SeedTemplate, ...]:
     templates: list[SeedTemplate] = []
     seen: set[str] = set()
-    for entry in raw or []:
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise SeedBundleError(f"templates.yaml 里有条目不是合法的映射: {entry!r}")
         code = entry.get("code")
         if not code:
             raise SeedBundleError("templates.yaml 里有条目缺少 code")
@@ -95,12 +102,17 @@ def _parse_templates(raw) -> tuple[SeedTemplate, ...]:
     return tuple(templates)
 
 
-def _parse_problems(raw, template_codes: set[str]) -> tuple[SeedProblem, ...]:
+def _parse_problems(raw: list, template_codes: set[str]) -> tuple[SeedProblem, ...]:
+    if not raw:
+        raise SeedBundleError("problems.yaml 不能为空，至少需要一道题目")
+
     problems: list[SeedProblem] = []
     seen: set[int] = set()
-    for entry in raw or []:
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise SeedBundleError(f"problems.yaml 里有条目不是合法的映射: {entry!r}")
         lc_id = entry.get("lc_id")
-        if not isinstance(lc_id, int):
+        if not isinstance(lc_id, int) or isinstance(lc_id, bool):
             raise SeedBundleError(f"problems.yaml 里有条目的 lc_id 非法: {lc_id!r}")
         if lc_id in seen:
             raise SeedBundleError(f"problems.yaml 的 lc_id 重复: {lc_id}")
@@ -140,23 +152,34 @@ def _parse_problems(raw, template_codes: set[str]) -> tuple[SeedProblem, ...]:
     return tuple(problems)
 
 
-def _parse_plan(raw, known_lc_ids: set[int]) -> SeedPlan:
-    raw = raw or {}
+def _parse_plan(raw: dict, known_lc_ids: set[int]) -> SeedPlan:
     start_date = raw.get("start_date")
-    if not isinstance(start_date, date):
+    if isinstance(start_date, datetime) or not isinstance(start_date, date):
         raise SeedBundleError(f"plan_default.yaml 的 start_date 非法: {start_date!r}")
+
+    days_raw = raw.get("days")
+    if not isinstance(days_raw, list) or not days_raw:
+        raise SeedBundleError("plan_default.yaml 的 days 不能为空，至少需要一天")
 
     days: list[SeedPlanDay] = []
     seen: set[int] = set()
-    for entry in raw.get("days") or []:
+    for entry in days_raw:
+        if not isinstance(entry, dict):
+            raise SeedBundleError(f"plan_default.yaml 的 days 里有条目不是合法的映射: {entry!r}")
         day_index = entry.get("day_index")
-        if not isinstance(day_index, int):
+        if not isinstance(day_index, int) or isinstance(day_index, bool):
             raise SeedBundleError(f"plan_default.yaml 的 day_index 非法: {day_index!r}")
         if day_index in seen:
             raise SeedBundleError(f"plan_default.yaml 的 day_index 重复: {day_index}")
         seen.add(day_index)
 
-        lc_ids = tuple(entry.get("problems") or ())
+        problems_raw = entry.get("problems") if entry.get("problems") is not None else []
+        if not isinstance(problems_raw, list):
+            raise SeedBundleError(
+                f"plan_default.yaml 第 {day_index} 天的 problems 必须是列表，"
+                f"实际是 {type(problems_raw).__name__}"
+            )
+        lc_ids = tuple(problems_raw)
         for lc_id in lc_ids:
             if lc_id not in known_lc_ids:
                 raise SeedBundleError(
@@ -181,15 +204,15 @@ def _parse_plan(raw, known_lc_ids: set[int]) -> SeedPlan:
 
 def load_bundle(topic_dir: Path) -> SeedBundle:
     try:
-        config = parse_topic_config(_read_yaml(topic_dir / "topic.yaml"))
+        config = parse_topic_config(_read_yaml(topic_dir / "topic.yaml", dict))
     except TopicConfigError as exc:
         raise SeedBundleError(str(exc)) from exc
 
-    templates = _parse_templates(_read_yaml(topic_dir / "templates.yaml"))
+    templates = _parse_templates(_read_yaml(topic_dir / "templates.yaml", list))
     problems = _parse_problems(
-        _read_yaml(topic_dir / "problems.yaml"), {t.code for t in templates}
+        _read_yaml(topic_dir / "problems.yaml", list), {t.code for t in templates}
     )
     plan = _parse_plan(
-        _read_yaml(topic_dir / "plan_default.yaml"), {p.lc_id for p in problems}
+        _read_yaml(topic_dir / "plan_default.yaml", dict), {p.lc_id for p in problems}
     )
     return SeedBundle(config=config, problems=problems, templates=templates, plan=plan)

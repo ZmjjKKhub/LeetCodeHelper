@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
-
-import yaml
 
 from leetcode_helper.models import Difficulty
 
@@ -53,11 +50,21 @@ class TopicConfig:
 
 
 def parse_topic_config(raw: dict) -> TopicConfig:
-    for key in ("code", "name"):
-        if not raw.get(key):
-            raise TopicConfigError(f"{key} 不能为空")
+    if not isinstance(raw, dict):
+        raise TopicConfigError(f"topic 配置的顶层必须是 dict，实际是 {type(raw).__name__}")
 
-    time_limits_raw = raw.get("time_limits") or {}
+    for key in ("code", "name"):
+        value = raw.get(key)
+        if not isinstance(value, str) or not value:
+            raise TopicConfigError(f"{key} 不能为空，且必须是字符串")
+
+    time_limits_raw = raw.get("time_limits")
+    if time_limits_raw is None:
+        time_limits_raw = {}
+    if not isinstance(time_limits_raw, dict):
+        raise TopicConfigError(
+            f"time_limits 必须是 dict，实际是 {type(time_limits_raw).__name__}"
+        )
     time_limits: dict[str, int] = {}
     for difficulty in Difficulty:
         name = difficulty.value
@@ -68,9 +75,17 @@ def parse_topic_config(raw: dict) -> TopicConfig:
             raise TopicConfigError(f"time_limits.{name} 必须是正整数，实际是 {value!r}")
         time_limits[name] = value
 
+    card_fields_raw = raw.get("card_fields")
+    if card_fields_raw is None:
+        card_fields_raw = []
+    if not isinstance(card_fields_raw, list):
+        raise TopicConfigError(
+            f"card_fields 必须是 list，实际是 {type(card_fields_raw).__name__}"
+        )
+
     fields: list[CardField] = []
     seen: set[str] = set()
-    for entry in raw.get("card_fields") or []:
+    for entry in card_fields_raw:
         key = entry.get("key")
         if not key:
             raise TopicConfigError("card_fields 里有条目缺少 key")
@@ -82,7 +97,14 @@ def parse_topic_config(raw: dict) -> TopicConfig:
         if field_type not in FIELD_TYPES:
             raise TopicConfigError(f"card_fields.{key} 的 type 非法: {field_type}")
 
-        options = tuple(entry.get("options") or ())
+        options_raw = entry.get("options")
+        if options_raw is None:
+            options_raw = []
+        if not isinstance(options_raw, list) or not all(
+            isinstance(option, str) for option in options_raw
+        ):
+            raise TopicConfigError(f"card_fields.{key} 的 options 必须是字符串列表")
+        options = tuple(options_raw)
         if field_type == "choice" and not options:
             raise TopicConfigError(f"card_fields.{key} 是 choice，必须有非空 options")
 
@@ -100,10 +122,6 @@ def parse_topic_config(raw: dict) -> TopicConfig:
 
 def parse_topic_config_json(text: str) -> TopicConfig:
     return parse_topic_config(json.loads(text))
-
-
-def load_topic_config(path: Path) -> TopicConfig:
-    return parse_topic_config(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
 def time_limit_for(config: TopicConfig, difficulty: Difficulty) -> int:

@@ -70,6 +70,68 @@ def test_submit_count_must_be_positive():
         )
 
 
+def test_negative_duration_sec_rejected():
+    with pytest.raises(ValueError, match="duration_sec 不能为负"):
+        build_attempt(
+            AttemptInput(
+                problem_id=7,
+                duration_bucket=DurationBucket.within,
+                mark=Mark.A,
+                duration_sec=-1,
+            ),
+            difficulty=Difficulty.easy,
+            config=CONFIG,
+            today=date(2026, 8, 31),
+        )
+
+
+def test_used_template_empty_string_normalized_to_none():
+    attempt = build_attempt(
+        AttemptInput(
+            problem_id=7,
+            duration_bucket=DurationBucket.within,
+            mark=Mark.A,
+            used_template="",
+        ),
+        difficulty=Difficulty.easy,
+        config=CONFIG,
+        today=date(2026, 8, 31),
+    )
+    assert attempt.used_template is None
+
+
+def test_submit_count_bool_rejected():
+    with pytest.raises(ValueError, match="submit_count 必须 >= 1"):
+        build_attempt(
+            AttemptInput(
+                problem_id=7,
+                duration_bucket=DurationBucket.within,
+                mark=Mark.A,
+                submit_count=True,
+            ),
+            difficulty=Difficulty.easy,
+            config=CONFIG,
+            today=date(2026, 8, 31),
+        )
+
+
+def test_build_attempt_review_kind_with_task_id():
+    attempt = build_attempt(
+        AttemptInput(
+            problem_id=7,
+            duration_bucket=DurationBucket.within,
+            mark=Mark.A,
+        ),
+        difficulty=Difficulty.easy,
+        config=CONFIG,
+        today=date(2026, 8, 31),
+        kind=AttemptKind.review,
+        review_task_id=42,
+    )
+    assert attempt.kind is AttemptKind.review
+    assert attempt.review_task_id == 42
+
+
 def _attempt(bucket: DurationBucket, submit_count: int) -> Attempt:
     return Attempt(
         problem_id=1,
