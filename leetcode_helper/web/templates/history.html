@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}历史 · {{ topic.name }}{% endblock %}
+{% block heading %}历史 · {{ topic.name }}{% endblock %}
+
+{% block content %}
+{% if not rows %}
+  <article><p>还没有任何做题记录。</p></article>
+{% else %}
+  <p class="muted">
+    共 {{ rows|length }} 条记录
+    {%- if truncated %}（仅显示最近 {{ limit }} 条，更早的记录未展示）{% endif %}
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>日期</th><th>题目</th><th>用时</th><th>标记</th>
+        <th>提交</th><th>一次 AC</th><th>模板</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.attempt.attempt_date.isoformat() }}</td>
+        <td>
+          <a href="{{ row.problem.url }}" target="_blank" rel="noopener">
+            {{ row.problem.lc_id }}. {{ row.problem.title }}
+          </a>
+        </td>
+        <td>{{ row.attempt.duration_bucket | bucket_label }}</td>
+        <td>{{ row.attempt.mark.value }}</td>
+        <td>{{ row.attempt.submit_count }}</td>
+        <td>{{ "是" if row.first_try_ac else "否" }}</td>
+        <td>{{ row.attempt.used_template or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+{% endblock %}

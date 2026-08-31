@@ -15,15 +15,37 @@ from sqlalchemy import Engine
 from sqlmodel import Session
 
 from leetcode_helper.db import get_engine
+from leetcode_helper.models import DurationBucket
 from leetcode_helper.repositories.today import NoActiveTopic, get_problem_item, list_template_codes
 from leetcode_helper.web.routes import history as history_routes
 from leetcode_helper.web.routes import today as today_routes
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
+# Chinese display labels for DurationBucket. Kept here (next to format_limit,
+# the other display-formatting helper) rather than in a route module: a
+# route only handles one page, but this label is a property of the enum
+# itself and any page rendering an Attempt needs it consistently.
+#
+# Keyed by the enum member (not `.value`) and asserted complete against
+# `DurationBucket` below -- a route-local `dict[str, str]` keyed by `.value`
+# has no such check, so adding a new bucket to the enum without updating the
+# dict would silently raise KeyError mid-render the first time that bucket
+# was actually hit, instead of failing loudly at import time.
+BUCKET_LABELS: dict[DurationBucket, str] = {
+    DurationBucket.within: "限时内",
+    DurationBucket.over: "超时",
+    DurationBucket.unsolved: "没做出来",
+}
+assert set(BUCKET_LABELS) == set(DurationBucket), "BUCKET_LABELS 未覆盖所有 DurationBucket 枚举值"
+
 
 def format_limit(seconds: int) -> str:
     return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+
+def format_bucket(bucket: DurationBucket) -> str:
+    return BUCKET_LABELS[bucket]
 
 
 def create_app(
@@ -37,6 +59,7 @@ def create_app(
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["limit"] = format_limit
+    templates.env.filters["bucket_label"] = format_bucket
     app.state.templates = templates
 
     @app.get("/", include_in_schema=False)
