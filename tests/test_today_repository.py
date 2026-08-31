@@ -373,3 +373,37 @@ def test_get_problem_item_with_attempt_uses_snapshot_not_live_config(session, to
     assert item.time_limit_sec == 1200
     assert item.attempt is attempt
     assert item.is_done is True
+
+
+def test_done_planned_item_shows_snapshotted_limit_not_live_config(session, topic):
+    """已完成的行显示当时判定用的限时，而不是按当前配置重算。
+
+    与 get_problem_item 的 I4 修复同源：topic 配置改了之后，历史行
+    不能显示一个从未对它生效过的限时。
+    """
+    problem = add_problem(session, topic, 209)
+    add_plan_day(session, topic, date(2026, 9, 1), [problem])
+    session.add(
+        Attempt(
+            problem_id=problem.id,
+            attempt_date=date(2026, 9, 1),
+            duration_bucket=DurationBucket.within,
+            time_limit_sec=999,  # 当时生效的限时，与当前配置的 1200 不同
+            mark=Mark.A,
+        )
+    )
+    session.commit()
+
+    view = get_today_view(session, topic_id=topic.id, today=date(2026, 9, 1))
+
+    assert view.items[0].time_limit_sec == 999
+
+
+def test_pending_planned_item_uses_live_config_limit(session, topic):
+    problem = add_problem(session, topic, 209)
+    add_plan_day(session, topic, date(2026, 9, 1), [problem])
+
+    view = get_today_view(session, topic_id=topic.id, today=date(2026, 9, 1))
+
+    assert view.items[0].attempt is None
+    assert view.items[0].time_limit_sec == 1200

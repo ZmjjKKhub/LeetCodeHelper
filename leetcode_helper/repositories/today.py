@@ -110,15 +110,25 @@ def get_today_view(session: Session, *, topic_id: int, today: date) -> TodayView
             .order_by(PlanItem.sort_order, PlanItem.id)
         ).all()
         attempts = _todays_attempts(session, [problem.id for _, problem in rows], today)
-        items = [
-            TodayItem(
-                problem=problem,
-                time_limit_sec=time_limit_for(config, problem.difficulty),
-                plan_item_id=plan_item.id,
-                attempt=attempts.get(problem.id),
+        items = []
+        for plan_item, problem in rows:
+            attempt = attempts.get(problem.id)
+            items.append(
+                TodayItem(
+                    problem=problem,
+                    # A done row shows the limit the attempt was actually judged
+                    # against (snapshotted on the Attempt), not a fresh lookup —
+                    # the topic config may have changed since. A pending row has
+                    # no snapshot yet, so the live config is the right source.
+                    time_limit_sec=(
+                        attempt.time_limit_sec
+                        if attempt is not None
+                        else time_limit_for(config, problem.difficulty)
+                    ),
+                    plan_item_id=plan_item.id,
+                    attempt=attempt,
+                )
             )
-            for plan_item, problem in rows
-        ]
         return TodayView(
             config=config,
             items=items,
