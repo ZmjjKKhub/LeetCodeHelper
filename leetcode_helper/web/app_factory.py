@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from datetime import date
 from pathlib import Path
 from typing import Callable
@@ -11,8 +12,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine
+from sqlmodel import Session
 
 from leetcode_helper.db import get_engine
+from leetcode_helper.repositories.today import NoActiveTopic, get_problem_item, list_template_codes
 from leetcode_helper.web.routes import history as history_routes
 from leetcode_helper.web.routes import today as today_routes
 
@@ -40,43 +43,83 @@ def create_app(
     def root() -> RedirectResponse:
         return RedirectResponse("/today")
 
-    @app.exception_handler(LookupError)
-    def no_topic_configured(request: Request, exc: LookupError) -> HTMLResponse:
-        # A LookupError here means "no active topic exists" -- most commonly
+    @app.exception_handler(NoActiveTopic)
+    def no_topic_configured(request: Request, exc: NoActiveTopic) -> HTMLResponse:
+        # NoActiveTopic means "no active topic exists" -- most commonly
         # because the seed importer has never been run. That is an expected,
         # recoverable state for a fresh install, not a bug: surface it as a
         # plain explanatory page (503, since the service genuinely has
         # nothing to serve yet) instead of letting FastAPI turn it into an
         # unhandled 500 with a raw stack trace.
+        #
+        # This handler is registered on NoActiveTopic specifically, *not* the
+        # bare LookupError it subclasses. LookupError is also the base class
+        # of KeyError and IndexError, so catching it broadly would silently
+        # relabel unrelated internal bugs (e.g. a raw dict/list subscript
+        # error anywhere in the request) as "you forgot to seed" and destroy
+        # their traceback.
         return HTMLResponse(
-            f"<h1>还没有可用的专题</h1><p>{exc}</p>",
+            f"<h1>还没有可用的专题</h1><p>{html.escape(str(exc))}</p>",
             status_code=503,
         )
 
     @app.exception_handler(RequestValidationError)
     async def form_validation_error(request: Request, exc: RequestValidationError) -> HTMLResponse:
-        # A bogus enum value (e.g. mark="Z") fails FastAPI/Pydantic's own
-        # Form(...) coercion *before* the route body runs -- our route-level
-        # try/except around record_attempt never even sees it. Left to
-        # FastAPI's default, this would be a JSON body, which for an
-        # HTMX-driven fragment endpoint is either dumped raw into the page on
-        # swap or (HTMX's default: no swap on non-2xx) silently dropped.
-        # Render an HTML fragment instead, scoped to the same #problem-N row
-        # the form targeted when we can recover problem_id from the submitted
-        # form, so the row stays swappable and the user gets some feedback.
-        if request.url.path == "/attempts":
-            problem_id = "?"
-            try:
-                form = await request.form()
-                problem_id = form.get("problem_id", "?")
-            except Exception:
-                pass
+        # A bogus enum value (e.g. mark="Z") or a missing/non-numeric
+        # problem_id fails FastAPI/Pydantic's own Form(...) coercion *before*
+        # the route body runs -- routes/today.py's own try/except around
+        # record_attempt never sees it. Left to FastAPI's default, this would
+        # be a JSON body, which for an HTMX-driven fragment endpoint is
+        # either dumped raw into the page on swap or silently dropped.
+        if request.url.path != "/attempts":
             return HTMLResponse(
-                f'<article id="problem-{problem_id}" class="problem-row">'
-                "<p class=\"error\">保存失败：提交的数据不合法，请刷新页面重试</p></article>",
-                status_code=422,
+                f"<h1>请求参数错误</h1><p>{html.escape(str(exc))}</p>", status_code=422
             )
-        return HTMLResponse(f"<h1>请求参数错误</h1><p>{exc}</p>", status_code=422)
+
+        # Recover the raw submitted problem_id ourselves so we can still
+        # target and re-render the failed row -- but only trust it if it is
+        # purely digits. This handler reads the form directly, bypassing the
+        # int coercion Form(...) would normally have done, so an
+        # attacker-controlled value could otherwise flow straight into an
+        # HTML attribute/id (a real reflected-injection probe, not
+        # theoretical: `problem_id='"><script>alert(1)</script>'` used to
+        # come back live in the response body).
+        problem_id: int | None = None
+        try:
+            form = await request.form()
+            raw = form.get("problem_id")
+            if raw is not None and str(raw).isdigit():
+                problem_id = int(str(raw))
+        except Exception:
+            pass
+
+        if problem_id is not None:
+            with Session(app.state.engine) as session:
+                try:
+                    item = get_problem_item(session, problem_id)
+                    template_codes = list_template_codes(session, item.problem.topic_id)
+                except Exception:
+                    item = None
+                if item is not None:
+                    return app.state.templates.TemplateResponse(
+                        request,
+                        "partials/_problem_row.html",
+                        {
+                            "item": item,
+                            "template_codes": template_codes,
+                            "error": "提交的数据不合法，请重新选择后再试",
+                        },
+                        status_code=422,
+                    )
+
+        # No usable problem_id to key a row off of (missing, non-numeric, or
+        # a problem that no longer exists) -- there is no real #problem-N
+        # element we could safely target, so don't fabricate one. Surface a
+        # page-level notice instead of silently doing nothing.
+        return HTMLResponse(
+            '<p class="error">保存失败：提交的数据不合法，请刷新页面后重试</p>',
+            status_code=422,
+        )
 
     app.include_router(today_routes.router)
     app.include_router(history_routes.router)

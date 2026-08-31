@@ -1,37 +1,23 @@
 from __future__ import annotations
 
+import html
 from datetime import date as date_type
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from leetcode_helper.models import DurationBucket, Mark, Problem, Template, Topic
-from leetcode_helper.repositories.attempts import record_attempt
-from leetcode_helper.repositories.today import TodayItem, get_today_view
+from leetcode_helper.models import DurationBucket, Mark
+from leetcode_helper.repositories.attempts import ProblemNotFound, record_attempt
+from leetcode_helper.repositories.today import (
+    active_topic,
+    get_problem_item,
+    get_today_view,
+    list_template_codes,
+)
 from leetcode_helper.services.attempts import AttemptInput
-from leetcode_helper.services.topics import parse_topic_config_json, time_limit_for
 
 router = APIRouter()
-
-
-def _template_codes(session: Session, topic_id: int) -> list[str]:
-    return [
-        row.code
-        for row in session.exec(
-            select(Template).where(Template.topic_id == topic_id).order_by(Template.code)
-        ).all()
-    ]
-
-
-def active_topic(session: Session) -> Topic:
-    # is_active == True (not `.is_active`) is required here: SQLModel/SQLAlchemy
-    # column comparisons build a SQL WHERE clause, whereas a plain truthy
-    # attribute access on the class does not filter anything.
-    topic = session.exec(select(Topic).where(Topic.is_active == True).order_by(Topic.id)).first()  # noqa: E712
-    if topic is None:
-        raise LookupError("还没有导入任何 topic，先跑 python -m leetcode_helper.seed")
-    return topic
 
 
 @router.get("/today", response_class=HTMLResponse)
@@ -41,7 +27,7 @@ def today_page(request: Request) -> HTMLResponse:
     with Session(app.state.engine) as session:
         topic = active_topic(session)
         view = get_today_view(session, topic_id=topic.id, today=today)
-        template_codes = _template_codes(session, topic.id)
+        template_codes = list_template_codes(session, topic.id)
         return app.state.templates.TemplateResponse(
             request,
             "today.html",
@@ -74,31 +60,34 @@ def _error_row_response(
     not swap non-2xx responses by default -- silently do nothing, leaving the
     user with no feedback at all. An HTML fragment, scoped to the row and
     carrying a readable message, is what base.html's htmx:beforeSwap hook
-    opts into swapping for 404/422 responses.
+    opts into swapping for 404/422 responses on this endpoint.
+
+    `problem_id` here is always the int FastAPI already coerced via
+    `Form(...)` on the caller's signature -- never raw user text -- so
+    embedding it directly in the fallback fragment's id/text is safe.
+    `error`, however, is a message string and is HTML-escaped before use.
     """
-    problem = session.get(Problem, problem_id)
-    if problem is None:
-        # We don't even have a Problem to re-render a real row around (e.g. a
-        # stale/forged problem_id). Fall back to a minimal fragment that at
-        # least keeps the same id so the DOM node HTMX is about to target
-        # still exists afterwards.
+    try:
+        item = get_problem_item(session, problem_id)
+        template_codes = list_template_codes(session, item.problem.topic_id)
+    except Exception:
+        # Either the problem itself doesn't exist (ProblemNotFound) or
+        # building a full row failed for some other repository-layer reason
+        # -- e.g. a corrupt topic.config_json (TopicConfigError, a ValueError
+        # subclass) raising a *second* time while we try to redisplay the
+        # row after the *first* raise already produced `error`. Either way,
+        # rendering the error page itself must never become an unhandled
+        # 500; fall back to a minimal fragment carrying the original message.
         return HTMLResponse(
             f'<article id="problem-{problem_id}" class="problem-row">'
-            f'<p class="error">保存失败：{error}</p></article>',
+            f'<p class="error">保存失败：{html.escape(error)}</p></article>',
             status_code=status_code,
         )
 
-    topic = session.get(Topic, problem.topic_id)
-    config = parse_topic_config_json(topic.config_json)
-    item = TodayItem(problem=problem, time_limit_sec=time_limit_for(config, problem.difficulty))
     return app.state.templates.TemplateResponse(
         request,
         "partials/_problem_row.html",
-        {
-            "item": item,
-            "template_codes": _template_codes(session, topic.id),
-            "error": error,
-        },
+        {"item": item, "template_codes": template_codes, "error": error},
         status_code=status_code,
     )
 
@@ -130,7 +119,7 @@ def create_attempt(
                 ),
                 today=today,
             )
-        except LookupError as exc:
+        except ProblemNotFound as exc:
             return _error_row_response(
                 app, request, session, problem_id=problem_id, error=str(exc), status_code=404
             )
@@ -139,14 +128,7 @@ def create_attempt(
                 app, request, session, problem_id=problem_id, error=str(exc), status_code=422
             )
 
-        problem = session.get(Problem, problem_id)
-        topic = session.get(Topic, problem.topic_id)
-        config = parse_topic_config_json(topic.config_json)
-        item = TodayItem(
-            problem=problem,
-            time_limit_sec=time_limit_for(config, problem.difficulty),
-            attempt=attempt,
-        )
+        item = get_problem_item(session, problem_id, attempt=attempt)
         # template_codes=[] is safe here only because a done item (item.attempt
         # is set) never renders the <form>/<select> branch that reads
         # template_codes -- see partials/_problem_row.html's `{% if not

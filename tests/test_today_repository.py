@@ -15,7 +15,14 @@ from leetcode_helper.models import (
     Problem,
     Topic,
 )
-from leetcode_helper.repositories.today import get_today_view
+from leetcode_helper.repositories.attempts import ProblemNotFound
+from leetcode_helper.repositories.today import (
+    NoActiveTopic,
+    active_topic,
+    get_problem_item,
+    get_today_view,
+    list_template_codes,
+)
 
 
 @pytest.fixture
@@ -283,3 +290,86 @@ def test_grouped_orders_by_lc_id_within_section_regardless_of_insertion_order(se
 def test_unknown_topic_id_raises_lookup_error(session):
     with pytest.raises(LookupError):
         get_today_view(session, topic_id=999, today=date(2026, 9, 1))
+
+
+# ---------------------------------------------------------------------------
+# active_topic / list_template_codes / get_problem_item (moved from
+# web/routes/today.py, plus get_problem_item is new)
+# ---------------------------------------------------------------------------
+
+
+def test_active_topic_raises_no_active_topic_when_none_exists(session):
+    with pytest.raises(NoActiveTopic):
+        active_topic(session)
+
+
+def test_active_topic_no_active_topic_is_not_a_bare_lookup_error_subclass_mixup(session):
+    # NoActiveTopic must be a *specific* type callers can narrow to -- not
+    # something that also happens to catch KeyError/IndexError because they
+    # share the LookupError base class. Asserting the concrete type (not just
+    # `isinstance(..., LookupError)`) is the point of this test.
+    with pytest.raises(NoActiveTopic) as exc_info:
+        active_topic(session)
+    assert type(exc_info.value) is NoActiveTopic
+
+
+def test_active_topic_skips_inactive(session, topic):
+    topic.is_active = False
+    session.add(topic)
+    session.commit()
+
+    with pytest.raises(NoActiveTopic):
+        active_topic(session)
+
+
+def test_active_topic_returns_the_active_one(session, topic):
+    assert active_topic(session).id == topic.id
+
+
+def test_list_template_codes_empty_when_none(session, topic):
+    assert list_template_codes(session, topic.id) == []
+
+
+def test_get_problem_item_raises_problem_not_found_for_unknown_id(session):
+    with pytest.raises(ProblemNotFound):
+        get_problem_item(session, 999)
+
+
+def test_get_problem_item_without_attempt_computes_from_live_config(session, topic):
+    problem = add_problem(session, topic, 209, difficulty=Difficulty.medium)
+    item = get_problem_item(session, problem.id)
+    assert item.time_limit_sec == 1200  # topic fixture's medium limit
+    assert item.attempt is None
+    assert item.is_done is False
+
+
+def test_get_problem_item_with_attempt_uses_snapshot_not_live_config(session, topic):
+    # I4: once an Attempt exists, its own time_limit_sec snapshot is
+    # authoritative -- the topic's *current* config must not be consulted at
+    # all. Prove it by mutating the topic's config to a wildly different
+    # limit after the attempt was written and confirming get_problem_item
+    # still reports the value stamped onto the attempt.
+    problem = add_problem(session, topic, 209, difficulty=Difficulty.medium)
+    attempt = Attempt(
+        problem_id=problem.id,
+        attempt_date=date(2026, 9, 1),
+        duration_bucket=DurationBucket.within,
+        time_limit_sec=1200,
+        submit_count=1,
+        mark=Mark.A,
+    )
+    session.add(attempt)
+    session.commit()
+    session.refresh(attempt)
+
+    topic.config_json = (
+        '{"code": "sliding-window", "name": "sw", '
+        '"time_limits": {"easy": 1, "medium": 1, "hard": 1}, "card_fields": []}'
+    )
+    session.add(topic)
+    session.commit()
+
+    item = get_problem_item(session, problem.id, attempt=attempt)
+    assert item.time_limit_sec == 1200
+    assert item.attempt is attempt
+    assert item.is_done is True

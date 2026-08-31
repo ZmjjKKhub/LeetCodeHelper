@@ -22,6 +22,16 @@ from leetcode_helper.services.attempts import AttemptInput, build_attempt, first
 from leetcode_helper.services.topics import parse_topic_config_json
 
 
+class ProblemNotFound(LookupError):
+    """给定的 problem_id 在库里不存在。
+
+    是 LookupError 的一个具体子类，而不是直接抛/捕获裸的 LookupError:
+    LookupError 也是 KeyError、IndexError 的基类，裸着捕获会把内部 bug（比如
+    误用字典下标）误判成"problem 不存在"这种预期内的错误状态，掩盖真正的问题。
+    调用方应该只捕获这个具体类型。
+    """
+
+
 @dataclass
 class HistoryRow:
     attempt: Attempt
@@ -38,7 +48,7 @@ def record_attempt(
 ) -> Attempt:
     problem = session.get(Problem, data.problem_id)
     if problem is None:
-        raise LookupError(f"problem_id={data.problem_id} 不存在")
+        raise ProblemNotFound(f"problem_id={data.problem_id} 不存在")
 
     topic = session.get(Topic, problem.topic_id)
     config = parse_topic_config_json(topic.config_json)

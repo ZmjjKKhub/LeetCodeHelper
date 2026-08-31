@@ -1,9 +1,6 @@
 from datetime import date
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session
 
 from leetcode_helper.models import (
     Attempt,
@@ -13,81 +10,11 @@ from leetcode_helper.models import (
     Mark,
     Plan,
     PlanDay,
-    PlanItem,
     Problem,
     Template,
     Topic,
 )
-from leetcode_helper.web.app_factory import create_app
-
-CONFIG_JSON = (
-    '{"code": "sliding-window", "name": "\\u6ed1\\u52a8\\u7a97\\u53e3", '
-    '"time_limits": {"easy": 480, "medium": 1200, "hard": 2100}, "card_fields": []}'
-)
-
-
-@pytest.fixture
-def engine():
-    # StaticPool is required (not just check_same_thread=False): the
-    # TestClient dispatches requests on a different thread than the test
-    # body, and plain SingletonThreadPool (sqlite's default for ":memory:")
-    # hands each thread its own separate in-memory database -- the seeded
-    # rows would be invisible to the request. StaticPool shares one
-    # connection across threads.
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-    return engine
-
-
-def seed(engine, *, with_plan: bool, is_active: bool = True):
-    with Session(engine) as session:
-        topic = Topic(
-            code="sliding-window", name="滑动窗口", config_json=CONFIG_JSON, is_active=is_active
-        )
-        session.add(topic)
-        session.commit()
-        session.refresh(topic)
-
-        problem = Problem(
-            topic_id=topic.id,
-            lc_id=209,
-            title="长度最小的子数组",
-            url="https://leetcode.cn/problems/minimum-size-subarray-sum/",
-            difficulty=Difficulty.medium,
-            section="§2.2",
-            section_name="越长越合法",
-            default_template="C",
-        )
-        session.add(problem)
-        session.commit()
-        session.refresh(problem)
-
-        if with_plan:
-            plan = Plan(topic_id=topic.id, name="计划", start_date=date(2026, 9, 1))
-            session.add(plan)
-            session.commit()
-            session.refresh(plan)
-            day = PlanDay(
-                plan_id=plan.id,
-                day_index=1,
-                planned_date=date(2026, 9, 1),
-                phase="阶段一",
-                theme="定长窗口三步走",
-            )
-            session.add(day)
-            session.commit()
-            session.refresh(day)
-            session.add(PlanItem(plan_day_id=day.id, problem_id=problem.id))
-            session.commit()
-        return topic.id, problem.id
-
-
-def make_client(engine) -> TestClient:
-    return TestClient(create_app(engine=engine, today_provider=lambda: date(2026, 9, 1)))
+from tests.conftest import CONFIG_JSON, make_client, seed
 
 
 def test_root_redirects_to_today(engine):
@@ -116,11 +43,11 @@ def test_today_page_renders_fallback_when_no_plan_day(engine):
     assert "§2.2" in body
 
 
-def test_today_page_no_active_topic_is_not_a_500(engine):
-    # No topic at all -> must not be an unhandled 500 stack trace.
+def test_today_page_no_active_topic_is_a_503(engine):
+    # No topic at all -> the "no active topic, probably forgot to seed" page,
+    # never an unhandled 500 stack trace.
     response = make_client(engine).get("/today")
-    assert response.status_code != 500
-    assert response.status_code < 500 or response.status_code == 503
+    assert response.status_code == 503
 
 
 def test_inactive_topic_is_skipped(engine):
@@ -188,7 +115,7 @@ def test_pending_item_form_defaults_template_and_hx_target(engine):
     assert f'hx-target="#problem-{problem_id}"' in body
     assert f'id="problem-{problem_id}"' in body
     # default_template is "C" for the seeded problem: the <option value="C">
-    # inside the template <select> (not the unrelated mark A/B/C radios)
+    # inside the template <select> (not the unrelated mark A/B/C buttons)
     # must carry `selected`.
     select_start = body.index("<select")
     select_end = body.index("</select>", select_start)
@@ -196,6 +123,41 @@ def test_pending_item_form_defaults_template_and_hx_target(engine):
     idx_c = select_html.index('value="C"')
     snippet = select_html[idx_c : idx_c + 40]
     assert "selected" in snippet
+
+
+def test_mark_buttons_submit_directly_no_separate_save_button(engine):
+    # The product hypothesis this whole phase exists to test is <=20s and
+    # <=3 clicks: 录入(open) -> 用时(duration) -> 标记(mark). That only works
+    # if clicking a mark button *is* the submit action -- collapsing 标记
+    # and 保存 into one click -- rather than a fourth separate "保存" button.
+    seed(engine, with_plan=True)
+    body = make_client(engine).get("/today").text
+
+    assert '<button type="submit" name="mark" value="A">A</button>' in body
+    assert '<button type="submit" name="mark" value="B">B</button>' in body
+    assert '<button type="submit" name="mark" value="C">C</button>' in body
+    assert "保存" not in body
+    # duration_bucket must still be required client-side so an incomplete
+    # submission is caught by the browser instead of round-tripping.
+    assert 'name="duration_bucket" value="within" required' in body
+
+
+def test_form_has_disabled_elt_for_double_submit_guard(engine):
+    # I6: hx-disabled-elt gives "it's saving" feedback and prevents a
+    # double-click from writing two Attempt rows.
+    seed(engine, with_plan=True)
+    body = make_client(engine).get("/today").text
+    assert 'hx-disabled-elt="find button"' in body
+
+
+def test_submit_count_field_comes_after_mark_buttons(engine):
+    # submit_count is the least-used field; it must not sit first in tab/
+    # visual order ahead of duration and mark.
+    seed(engine, with_plan=True)
+    body = make_client(engine).get("/today").text
+    mark_button_index = body.index('name="mark" value="A"')
+    submit_count_index = body.index('name="submit_count"')
+    assert mark_button_index < submit_count_index
 
 
 def test_plan_day_with_zero_items_is_empty_state(engine):
@@ -249,8 +211,21 @@ def test_problem_link_opens_in_new_tab(engine):
     assert 'target="_blank"' in body
 
 
-def test_x_cloak_style_present(engine):
+def test_unrelated_keyerror_is_500_not_disguised_as_no_active_topic(engine, monkeypatch):
+    # C1: the old handler was registered on the bare LookupError, which is
+    # also the base class of KeyError and IndexError. An internal bug (e.g.
+    # a raw dict subscript somewhere in the request) would get silently
+    # relabeled as "you forgot to seed" (503) with its traceback destroyed,
+    # instead of surfacing as the 500 it actually is.
     seed(engine, with_plan=True)
-    body = make_client(engine).get("/today").text
-    assert "[x-cloak]" in body
-    assert "display: none !important" in body
+
+    import leetcode_helper.web.routes.today as today_routes
+
+    def boom(*args, **kwargs):
+        raise KeyError("some unrelated bug")
+
+    monkeypatch.setattr(today_routes, "get_today_view", boom)
+
+    response = make_client(engine, raise_server_exceptions=False).get("/today")
+    assert response.status_code == 500
+    assert response.status_code != 503

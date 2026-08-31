@@ -20,25 +20,14 @@
   <form class="panel" x-show="open" x-cloak
         hx-post="/attempts"
         hx-target="#problem-{{ item.problem.id }}"
-        hx-swap="outerHTML">
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
     <input type="hidden" name="problem_id" value="{{ item.problem.id }}">
-
-    <fieldset class="inline">
-      <label>提交次数
-        <input type="number" name="submit_count" value="1" min="1" step="1" style="width: 6rem">
-      </label>
-    </fieldset>
 
     <fieldset class="inline">
       <label><input type="radio" name="duration_bucket" value="within" required> 限时内</label>
       <label><input type="radio" name="duration_bucket" value="over"> 超时</label>
       <label><input type="radio" name="duration_bucket" value="unsolved"> 没做出来</label>
-    </fieldset>
-
-    <fieldset class="inline">
-      <label><input type="radio" name="mark" value="A" required> A</label>
-      <label><input type="radio" name="mark" value="B"> B</label>
-      <label><input type="radio" name="mark" value="C"> C</label>
     </fieldset>
 
     <fieldset class="inline">
@@ -52,7 +41,25 @@
       </label>
     </fieldset>
 
-    <button type="submit">保存</button>
+    {# The mark buttons *are* the submit action: open -> duration -> mark is
+       the whole flow (3 clicks), so picking a mark and saving must collapse
+       into one click rather than staying two separate steps. Each button
+       submits its own name="mark" value, so whichever one is clicked is
+       what gets posted. This is a Jinja comment (stripped at render time),
+       not an HTML comment, on purpose: an HTML comment here would be sent
+       to the client and would literally contain the text this form must
+       not show, breaking any test/UX check for its absence. #}
+    <fieldset class="inline">
+      <button type="submit" name="mark" value="A">A</button>
+      <button type="submit" name="mark" value="B">B</button>
+      <button type="submit" name="mark" value="C">C</button>
+    </fieldset>
+
+    <fieldset class="inline">
+      <label>提交次数
+        <input type="number" name="submit_count" value="1" min="1" step="1" style="width: 6rem">
+      </label>
+    </fieldset>
   </form>
   {% endif %}
 </article>

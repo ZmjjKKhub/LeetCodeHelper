@@ -8,8 +8,28 @@ from itertools import groupby
 
 from sqlmodel import Session, select
 
-from leetcode_helper.models import Attempt, Plan, PlanDay, PlanItem, PlanStatus, Problem, Topic
+from leetcode_helper.models import (
+    Attempt,
+    Plan,
+    PlanDay,
+    PlanItem,
+    PlanStatus,
+    Problem,
+    Template,
+    Topic,
+)
+from leetcode_helper.repositories.attempts import ProblemNotFound
 from leetcode_helper.services.topics import TopicConfig, parse_topic_config_json, time_limit_for
+
+
+class NoActiveTopic(LookupError):
+    """没有任何激活状态的 topic（通常是还没跑过 seed 导入）。
+
+    是 LookupError 的具体子类而不是裸抛 LookupError：见
+    repositories/attempts.py::ProblemNotFound 的注释，同样的道理——
+    LookupError 也是 KeyError/IndexError 的基类，裸着捕获会把内部 bug
+    误判成"忘了 seed"这种预期内的、可恢复的状态。
+    """
 
 
 @dataclass
@@ -126,3 +146,48 @@ def get_today_view(session: Session, *, topic_id: int, today: date) -> TodayView
         if problem.id not in attempted_ids
     ]
     return TodayView(config=config, items=items, is_fallback=True)
+
+
+def active_topic(session: Session) -> Topic:
+    # is_active == True (not `.is_active`) is required here: SQLModel/SQLAlchemy
+    # column comparisons build a SQL WHERE clause, whereas a plain truthy
+    # attribute access on the class does not filter anything.
+    topic = session.exec(select(Topic).where(Topic.is_active == True).order_by(Topic.id)).first()  # noqa: E712
+    if topic is None:
+        raise NoActiveTopic("还没有导入任何 topic，先跑 python -m leetcode_helper.seed")
+    return topic
+
+
+def list_template_codes(session: Session, topic_id: int) -> list[str]:
+    return [
+        row.code
+        for row in session.exec(
+            select(Template).where(Template.topic_id == topic_id).order_by(Template.code)
+        ).all()
+    ]
+
+
+def get_problem_item(
+    session: Session, problem_id: int, *, attempt: Attempt | None = None
+) -> TodayItem:
+    """Build a single TodayItem for rendering partials/_problem_row.html.
+
+    When `attempt` is supplied, its `time_limit_sec` snapshot is used as-is
+    instead of recomputing from the topic's *current* config: the whole
+    point of snapshotting the limit onto the Attempt at record time is that
+    it must not drift if the topic config changes later. Only the
+    attempt-less case (no attempt yet exists for this problem) needs to
+    consult the live config.
+    """
+    problem = session.get(Problem, problem_id)
+    if problem is None:
+        raise ProblemNotFound(f"problem_id={problem_id} 不存在")
+
+    if attempt is not None:
+        time_limit_sec = attempt.time_limit_sec
+    else:
+        topic = session.get(Topic, problem.topic_id)
+        config = parse_topic_config_json(topic.config_json)
+        time_limit_sec = time_limit_for(config, problem.difficulty)
+
+    return TodayItem(problem=problem, time_limit_sec=time_limit_sec, attempt=attempt)

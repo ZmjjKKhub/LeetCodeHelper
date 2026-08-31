@@ -34,8 +34,12 @@
   // row the form targeted) even on 404/422 -- see routes/today.py. HTMX's
   // default responseHandling only swaps 2xx/3xx, so without this hook a
   // validation error would leave the user with silent, invisible failure.
+  // Scoped to /attempts specifically -- other HTMX callers (e.g. /history)
+  // should keep HTMX's normal error handling (including its console
+  // logging, which this hook otherwise suppresses via isError = false).
   document.body.addEventListener('htmx:beforeSwap', function (evt) {
-    if (evt.detail.xhr.status === 404 || evt.detail.xhr.status === 422) {
+    var path = evt.detail.requestConfig && evt.detail.requestConfig.path;
+    if (path === '/attempts' && (evt.detail.xhr.status === 404 || evt.detail.xhr.status === 422)) {
       evt.detail.shouldSwap = true;
       evt.detail.isError = false;
     }

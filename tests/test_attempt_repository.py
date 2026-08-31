@@ -16,7 +16,7 @@ from leetcode_helper.models import (
     Problem,
     Topic,
 )
-from leetcode_helper.repositories.attempts import list_history, record_attempt
+from leetcode_helper.repositories.attempts import ProblemNotFound, list_history, record_attempt
 from leetcode_helper.services.attempts import AttemptInput
 
 CONFIG_JSON = (
@@ -106,12 +106,16 @@ def test_record_attempt_marks_matching_plan_item_done(session, problem):
 
 
 def test_record_attempt_rejects_unknown_problem(session):
-    with pytest.raises(LookupError, match="problem_id=999 不存在"):
+    # ProblemNotFound must be a *specific* type callers can narrow to, not
+    # something that also happens to catch KeyError/IndexError just because
+    # they share the LookupError base class -- assert the concrete type.
+    with pytest.raises(ProblemNotFound, match="problem_id=999 不存在") as exc_info:
         record_attempt(
             session,
             AttemptInput(problem_id=999, duration_bucket=DurationBucket.within, mark=Mark.A),
             today=date(2026, 9, 1),
         )
+    assert type(exc_info.value) is ProblemNotFound
 
 
 def test_list_history_returns_newest_first_with_problem(session, problem):
