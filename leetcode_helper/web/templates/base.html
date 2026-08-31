@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}刷题复盘{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .done { opacity: .55; }
+    .panel { border-top: 1px solid var(--pico-muted-border-color); padding-top: .5rem; }
+    .row-head { display: flex; gap: .75rem; align-items: baseline; }
+    .muted { color: var(--pico-muted-color); font-size: .85em; }
+    fieldset.inline { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
+    fieldset.inline label { margin: 0; }
+  </style>
+</head>
+<body>
+<main class="container">
+  <nav>
+    <ul><li><strong>{% block heading %}刷题复盘{% endblock %}</strong></li></ul>
+    <ul>
+      <li><a href="/today">今日</a></li>
+      <li><a href="/history">历史</a></li>
+    </ul>
+  </nav>
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>
