@@ -1,0 +1,166 @@
+# 由 LeetCode 官方接口生成，标题与难度为权威数据，勿手工改动这两列。
+
+- lc_id: 1456
+  title: 定长子串中元音的最大数目
+  url: https://leetcode.cn/problems/maximum-number-of-vowels-in-a-substring-of-given-length/
+  difficulty: medium
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 643
+  title: 子数组最大平均数 I
+  url: https://leetcode.cn/problems/maximum-average-subarray-i/
+  difficulty: easy
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 1343
+  title: 大小为 K 且平均值大于等于阈值的子数组数目
+  url: https://leetcode.cn/problems/number-of-sub-arrays-of-size-k-and-average-greater-than-or-equal-to-threshold/
+  difficulty: medium
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 2090
+  title: 半径为 k 的子数组平均值
+  url: https://leetcode.cn/problems/k-radius-subarray-averages/
+  difficulty: medium
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 2379
+  title: 得到 K 个黑块的最少涂色次数
+  url: https://leetcode.cn/problems/minimum-recolors-to-get-k-consecutive-black-blocks/
+  difficulty: easy
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 2841
+  title: 几乎唯一子数组的最大和
+  url: https://leetcode.cn/problems/maximum-sum-of-almost-unique-subarray/
+  difficulty: medium
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 2461
+  title: 长度为 K 子数组中的最大和
+  url: https://leetcode.cn/problems/maximum-sum-of-distinct-subarrays-with-length-k/
+  difficulty: medium
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 1423
+  title: 可获得的最大点数
+  url: https://leetcode.cn/problems/maximum-points-you-can-obtain-from-cards/
+  difficulty: medium
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 1052
+  title: 爱生气的书店老板
+  url: https://leetcode.cn/problems/grumpy-bookstore-owner/
+  difficulty: medium
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 567
+  title: 字符串的排列
+  url: https://leetcode.cn/problems/permutation-in-string/
+  difficulty: medium
+  section: "§1.2"
+  section_name: 定长滑动窗口 · 进阶
+  is_starred: true
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 438
+  title: 找到字符串中所有字母异位词
+  url: https://leetcode.cn/problems/find-all-anagrams-in-a-string/
+  difficulty: medium
+  section: "§1.2"
+  section_name: 定长滑动窗口 · 进阶
+  is_starred: true
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 30
+  title: 串联所有单词的子串
+  url: https://leetcode.cn/problems/substring-with-concatenation-of-all-words/
+  difficulty: hard
+  section: "§1.2"
+  section_name: 定长滑动窗口 · 进阶
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 2134
+  title: 最少交换次数来组合所有的 1 II
+  url: https://leetcode.cn/problems/minimum-swaps-to-group-all-1s-together-ii/
+  difficulty: medium
+  section: "§1.2"
+  section_name: 定长滑动窗口 · 进阶
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 1888
+  title: 使二进制字符串字符交替的最少反转次数
+  url: https://leetcode.cn/problems/minimum-number-of-flips-to-make-the-binary-string-alternating/
+  difficulty: medium
+  section: "§1.2"
+  section_name: 定长滑动窗口 · 进阶
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A
+
+- lc_id: 2653
+  title: 滑动子数组的美丽值
+  url: https://leetcode.cn/problems/sliding-subarray-beauty/
+  difficulty: medium
+  section: "§1.2"
+  section_name: 定长滑动窗口 · 进阶
+  is_starred: false
+  is_premium: false
+  is_optional: false
+  default_template: A

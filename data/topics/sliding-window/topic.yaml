@@ -1,0 +1,16 @@
+code: sliding-window
+name: 滑动窗口
+
+# 限时（秒）。R2 的复习 pass/fail 判定用它，按 LeetCode 难度取。
+time_limits:
+  easy: 480
+  medium: 1200
+  hard: 2100
+
+# 本专题复盘卡片的字段。换专题 = 新建一个目录改这份 schema，不改代码。
+card_fields:
+  - {key: trigger_feature,  label: 触发特征, type: text}
+  - {key: monotonicity,     label: 单调性,   type: text}
+  - {key: maintained_value, label: 维护量,   type: choice, options: [sum, Counter, 不同元素个数, 其他]}
+  - {key: shrink_condition, label: 收缩条件, type: text}
+  - {key: count_timing,     label: 统计时机, type: choice, options: [入窗后, 出窗循环内, 出窗循环外]}

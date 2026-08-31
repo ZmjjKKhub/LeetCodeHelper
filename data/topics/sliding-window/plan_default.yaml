@@ -1,0 +1,28 @@
+name: 滑动窗口 · 第一周（定长）
+start_date: 2026-08-31
+
+days:
+  - day_index: 1
+    phase: 阶段一 · 定长滑窗
+    theme: 把模板 A 的「入-更新-出」三步写死。三题的差别只在「维护量」是什么
+    problems: [1456, 643, 1343]
+
+  - day_index: 2
+    phase: 阶段一 · 定长滑窗
+    theme: 维护量从 sum 升级到 Counter；2841 体会「窗口内不同元素个数」怎么 O(1) 维护
+    problems: [2090, 2379, 2841]
+
+  - day_index: 3
+    phase: 阶段一 · 定长滑窗
+    theme: 1423 的「逆向思维」：求两端最大 = 求中间定长窗口最小
+    problems: [2461, 1423, 1052]
+
+  - day_index: 4
+    phase: 阶段一 · 定长滑窗
+    theme: 字符串定长滑窗三连。567/438 是面试原题级别，必须默写下来
+    problems: [567, 438, 30]
+
+  - day_index: 5
+    phase: 阶段一 · 定长滑窗
+    theme: 环形数组的定长滑窗（下标取模）+ 复盘本阶段
+    problems: [2134, 1888, 2653]
