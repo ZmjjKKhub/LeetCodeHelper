@@ -1,5 +1,5 @@
 <article class="problem-row {% if item.is_done %}done{% endif %}" id="problem-{{ item.problem.id }}"
-         x-data="{ open: false }">
+         x-data="{ open: {{ 'true' if error else 'false' }} }">
   <div class="row-head">
     <a href="{{ item.problem.url }}" target="_blank" rel="noopener">
       {{ item.problem.lc_id }}. {{ item.problem.title }}
@@ -11,6 +11,10 @@
       <a href="#" @click.prevent="open = !open" role="button" class="secondary outline">录入</a>
     {% endif %}
   </div>
+
+  {% if error %}
+    <p class="error">保存失败：{{ error }}</p>
+  {% endif %}
 
   {% if not item.is_done %}
   <form class="panel" x-show="open" x-cloak

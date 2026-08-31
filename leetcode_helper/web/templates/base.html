@@ -15,6 +15,7 @@
     .muted { color: var(--pico-muted-color); font-size: .85em; }
     fieldset.inline { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
     fieldset.inline label { margin: 0; }
+    .error { color: var(--pico-del-color, crimson); }
   </style>
 </head>
 <body>
@@ -28,5 +29,17 @@
   </nav>
   {% block content %}{% endblock %}
 </main>
+<script>
+  // POST /attempts returns an HTML fragment (scoped to the same #problem-N
+  // row the form targeted) even on 404/422 -- see routes/today.py. HTMX's
+  // default responseHandling only swaps 2xx/3xx, so without this hook a
+  // validation error would leave the user with silent, invisible failure.
+  document.body.addEventListener('htmx:beforeSwap', function (evt) {
+    if (evt.detail.xhr.status === 404 || evt.detail.xhr.status === 422) {
+      evt.detail.shouldSwap = true;
+      evt.detail.isError = false;
+    }
+  });
+</script>
 </body>
 </html>
