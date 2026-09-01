@@ -179,10 +179,13 @@ def test_mark_buttons_submit_directly_no_separate_save_button(engine):
     seed(engine, with_plan=True)
     body = make_client(engine).get("/today").text
 
-    assert '<button type="submit" name="mark" value="A">A</button>' in body
-    assert '<button type="submit" name="mark" value="B">B</button>' in body
-    assert '<button type="submit" name="mark" value="C">C</button>' in body
-    assert "保存" not in body
+    assert '<button type="submit" name="mark" value="A"' in body
+    assert '<button type="submit" name="mark" value="B"' in body
+    assert '<button type="submit" name="mark" value="C"' in body
+    # "保存" now legitimately appears as prose ("点标记即保存") explaining
+    # that a mark click *is* the save -- but there must be no standalone
+    # <button>保存</button>-style separate save control.
+    assert ">保存<" not in body
     # duration_bucket must still be required client-side so an incomplete
     # submission is caught by the browser instead of round-tripping.
     assert 'name="duration_bucket" value="within" required' in body
@@ -318,6 +321,124 @@ def test_problem_link_opens_in_new_tab(engine):
     seed(engine, with_plan=True)
     body = make_client(engine).get("/today").text
     assert 'target="_blank"' in body
+
+
+def test_entry_panel_controls_have_visible_labels(engine):
+    # The panel used to be four unlabeled controls (a bare radio group, a
+    # dropdown of bare template codes, a "[-] 1 [+]" stepper, and bare A/B/C
+    # buttons) -- every one of them now needs a visible label/legend saying
+    # what it is.
+    topic_id, problem_id = seed(engine, with_plan=True)
+    with Session(engine) as session:
+        session.add(Template(topic_id=topic_id, code="A", name="定长滑窗", trigger_signal="窗口长度固定"))
+        session.commit()
+
+    body = make_client(engine).get("/today").text
+    assert "用时（限时 20:00）" in body
+    assert "用了哪个模板" in body
+    assert "提交次数" in body
+    assert "掌握程度（决定复习安排）" in body
+    # The A/B/C consequence line making the commit explicit.
+    assert "点标记即保存" in body
+
+
+def test_template_dropdown_shows_code_name_and_trigger_signal_title(engine):
+    # C2: repositories/today.py::list_template_codes used to throw away
+    # `name`/`trigger_signal`, leaving the user with a dropdown of bare
+    # letters and no way to tell what any of them mean.
+    topic_id, problem_id = seed(engine, with_plan=True)
+    with Session(engine) as session:
+        session.add(
+            Template(
+                topic_id=topic_id,
+                code="A",
+                name="定长滑窗（入 → 更新 → 出）",
+                trigger_signal="窗口长度固定",
+            )
+        )
+        session.commit()
+
+    # Fresh row.
+    body = make_client(engine).get("/today").text
+    assert "A · 定长滑窗（入 → 更新 → 出）" in body
+    assert 'title="窗口长度固定"' in body
+
+    # Done row (via /attempts response, and via a subsequent GET /today).
+    client = make_client(engine)
+    post_body = client.post(
+        "/attempts",
+        data={
+            "problem_id": problem_id,
+            "duration_bucket": "within",
+            "mark": "A",
+            "submit_count": "1",
+            "used_template": "A",
+        },
+    ).text
+    assert "A · 定长滑窗（入 → 更新 → 出）" in post_body
+    assert 'title="窗口长度固定"' in post_body
+
+    get_body = client.get("/today").text
+    assert "A · 定长滑窗（入 → 更新 → 出）" in get_body
+    assert 'title="窗口长度固定"' in get_body
+
+
+def test_done_row_summary_uses_chinese_bucket_label_not_raw_enum(engine):
+    # Minor bug called out alongside the label fixes: a done row used to
+    # show "已录入：A / within" -- the raw DurationBucket enum value leaking
+    # into user-facing text instead of the existing `bucket_label` filter's
+    # Chinese label.
+    topic_id, problem_id = seed(engine, with_plan=True)
+    with Session(engine) as session:
+        session.add(
+            Attempt(
+                problem_id=problem_id,
+                attempt_date=date(2026, 9, 1),
+                kind=AttemptKind.new,
+                duration_bucket=DurationBucket.within,
+                time_limit_sec=1200,
+                submit_count=1,
+                mark=Mark.A,
+            )
+        )
+        session.commit()
+
+    body = make_client(engine).get("/today").text
+    assert "已录入：A / 限时内" in body
+    assert "已录入：A / within" not in body
+
+
+def test_attempts_response_renders_labelled_panel_with_real_templates(engine):
+    # C2: create_attempt's own re-render used to pass template_codes=[] --
+    # this is the path that regression covers, now against the real,
+    # labelled option list (code · name), not an empty <select>.
+    topic_id, problem_id = seed(engine, with_plan=True)
+    with Session(engine) as session:
+        session.add(Template(topic_id=topic_id, code="A", name="定长滑窗", trigger_signal="窗口固定"))
+        session.add(Template(topic_id=topic_id, code="B", name="不定长滑窗", trigger_signal="窗口可变"))
+        session.commit()
+
+    body = make_client(engine).post(
+        "/attempts",
+        data={
+            "problem_id": problem_id,
+            "duration_bucket": "within",
+            "mark": "A",
+            "submit_count": "1",
+            "used_template": "B",
+        },
+    ).text
+
+    assert "用了哪个模板" in body
+    assert "A · 定长滑窗" in body
+    assert "B · 不定长滑窗" in body
+    assert 'title="窗口固定"' in body
+    assert 'title="窗口可变"' in body
+    select_start = body.index("<select")
+    select_end = body.index("</select>", select_start)
+    select_html = body[select_start:select_end]
+    idx_b = select_html.index('value="B"')
+    assert "selected" in select_html[idx_b : idx_b + 60]
 
 
 def test_unrelated_keyerror_is_500_not_disguised_as_no_active_topic(engine, monkeypatch):

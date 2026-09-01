@@ -17,7 +17,7 @@ from sqlmodel import Session
 
 from leetcode_helper.db import get_engine
 from leetcode_helper.models import DurationBucket
-from leetcode_helper.repositories.today import NoActiveTopic, get_problem_item, list_template_codes
+from leetcode_helper.repositories.today import NoActiveTopic, get_problem_item, list_template_options
 from leetcode_helper.web.routes import history as history_routes
 from leetcode_helper.web.routes import today as today_routes
 
@@ -124,7 +124,7 @@ def create_app(
             with Session(app.state.engine) as session:
                 try:
                     item = get_problem_item(session, problem_id)
-                    template_codes = list_template_codes(session, item.problem.topic_id)
+                    template_options = list_template_options(session, item.problem.topic_id)
                 except Exception:
                     item = None
                 if item is not None:
@@ -133,7 +133,7 @@ def create_app(
                         "partials/_problem_row.html",
                         {
                             "item": item,
-                            "template_codes": template_codes,
+                            "template_options": template_options,
                             "error": "提交的数据不合法，请重新选择后再试",
                         },
                         status_code=422,

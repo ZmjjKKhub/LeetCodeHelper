@@ -6,7 +6,7 @@
     </a>
     <span class="muted">{{ item.problem.difficulty.value }} · {{ item.problem.section }} · 限时 {{ item.time_limit_sec | limit }}</span>
     {% if item.is_done %}
-      <span class="muted">已录入：{{ item.attempt.mark.value }} / {{ item.attempt.duration_bucket.value }}</span>
+      <span class="muted">已录入：{{ item.attempt.mark.value }} / {{ item.attempt.duration_bucket | bucket_label }}</span>
       {# A recorded attempt must stay correctable: mark drives the whole
          Phase 2 review schedule, and the mark buttons *are* the submit
          buttons -- a misclick (B instead of A) is one click away and, until
@@ -29,25 +29,29 @@
         hx-disabled-elt="find button">
     <input type="hidden" name="problem_id" value="{{ item.problem.id }}">
 
-    <fieldset class="inline">
-      <label><input type="radio" name="duration_bucket" value="within" required{% if item.is_done and item.attempt.duration_bucket.value == "within" %} checked{% endif %}> 限时内</label>
-      <label><input type="radio" name="duration_bucket" value="over"{% if item.is_done and item.attempt.duration_bucket.value == "over" %} checked{% endif %}> 超时</label>
-      <label><input type="radio" name="duration_bucket" value="unsolved"{% if item.is_done and item.attempt.duration_bucket.value == "unsolved" %} checked{% endif %}> 没做出来</label>
+    <fieldset class="field-row">
+      <legend>用时（限时 {{ item.time_limit_sec | limit }}）</legend>
+      <div class="field-control inline">
+        <label><input type="radio" name="duration_bucket" value="within" required{% if item.is_done and item.attempt.duration_bucket.value == "within" %} checked{% endif %}> 限时内</label>
+        <label><input type="radio" name="duration_bucket" value="over"{% if item.is_done and item.attempt.duration_bucket.value == "over" %} checked{% endif %}> 超时</label>
+        <label><input type="radio" name="duration_bucket" value="unsolved"{% if item.is_done and item.attempt.duration_bucket.value == "unsolved" %} checked{% endif %}> 没做出来</label>
+      </div>
     </fieldset>
 
-    <fieldset class="inline">
-      <label>模板
+    <fieldset class="field-row">
+      <legend>用了哪个模板</legend>
+      <div class="field-control">
         <select name="used_template">
           <option value="">无</option>
-          {% for code in template_codes %}
+          {% for tmpl in template_options %}
             {% if item.is_done %}
-              <option value="{{ code }}" {% if code == item.attempt.used_template %}selected{% endif %}>{{ code }}</option>
+              <option value="{{ tmpl.code }}" title="{{ tmpl.trigger_signal }}" {% if tmpl.code == item.attempt.used_template %}selected{% endif %}>{{ tmpl.code }} · {{ tmpl.name }}</option>
             {% else %}
-              <option value="{{ code }}" {% if code == item.problem.default_template %}selected{% endif %}>{{ code }}</option>
+              <option value="{{ tmpl.code }}" title="{{ tmpl.trigger_signal }}" {% if tmpl.code == item.problem.default_template %}selected{% endif %}>{{ tmpl.code }} · {{ tmpl.name }}</option>
             {% endif %}
           {% endfor %}
         </select>
-      </label>
+      </div>
     </fieldset>
 
     {# 提交次数 must be visible and reachable *before* the mark buttons,
@@ -58,27 +62,38 @@
        [-]/[+] buttons are type="button" so they never submit the form
        themselves, and the default (1) requires no interaction, so the
        flow stays 用时 -> (提交次数, optional) -> 标记, three clicks. #}
-    <fieldset class="inline mark-row">
-      <div class="stepper" role="group" aria-label="提交次数">
-        <button type="button" @click="count = Math.max(1, count - 1)" aria-label="减少提交次数">−</button>
-        <span x-text="count"></span>
-        <button type="button" @click="count = count + 1" aria-label="增加提交次数">+</button>
+    <fieldset class="field-row">
+      <legend>提交次数</legend>
+      <div class="field-control">
+        <div class="stepper" role="group" aria-label="提交次数">
+          <button type="button" @click="count = Math.max(1, count - 1)" aria-label="减少提交次数">−</button>
+          <span x-text="count"></span>
+          <button type="button" @click="count = count + 1" aria-label="增加提交次数">+</button>
+        </div>
+        <input type="hidden" name="submit_count" :value="count">
       </div>
-      <input type="hidden" name="submit_count" :value="count">
+    </fieldset>
 
-      {# The mark buttons *are* the submit action: open -> duration -> mark is
-         the whole flow (3 clicks), so picking a mark and saving must collapse
-         into one click rather than staying two separate steps. Each button
-         submits its own name="mark" value, so whichever one is clicked is
-         what gets posted. On a done row, the currently recorded mark carries
-         aria-pressed="true" (and a "current" class) so the user can see what
-         they're changing from. This is a Jinja comment (stripped at render
-         time), not an HTML comment, on purpose: an HTML comment here would be
-         sent to the client and would literally contain the text this form
-         must not show, breaking any test/UX check for its absence. #}
-      <button type="submit" name="mark" value="A"{% if item.is_done and item.attempt.mark.value == "A" %} aria-pressed="true" class="current"{% endif %}>A</button>
-      <button type="submit" name="mark" value="B"{% if item.is_done and item.attempt.mark.value == "B" %} aria-pressed="true" class="current"{% endif %}>B</button>
-      <button type="submit" name="mark" value="C"{% if item.is_done and item.attempt.mark.value == "C" %} aria-pressed="true" class="current"{% endif %}>C</button>
+    {# The mark buttons *are* the submit action: open -> duration -> mark is
+       the whole flow (3 clicks), so picking a mark and saving must collapse
+       into one click rather than staying two separate steps. Each button
+       submits its own name="mark" value, so whichever one is clicked is
+       what gets posted. On a done row, the currently recorded mark carries
+       aria-pressed="true" (and a "current" class) so the user can see what
+       they're changing from. This is a Jinja comment (stripped at render
+       time), not an HTML comment, on purpose: an HTML comment here would be
+       sent to the client and would literally contain the text this form
+       must not show, breaking any test/UX check for its absence. #}
+    <fieldset class="field-row mark-row">
+      <legend>掌握程度（决定复习安排）</legend>
+      <div class="field-control">
+        <div class="mark-buttons">
+          <button type="submit" name="mark" value="A" title="一次过，思路直接：不安排复习"{% if item.is_done and item.attempt.mark.value == "A" %} aria-pressed="true" class="current"{% endif %}>A 一次过，思路直接</button>
+          <button type="submit" name="mark" value="B" title="磕绊/看了提示：安排 2 轮复习（D+3、D+14）"{% if item.is_done and item.attempt.mark.value == "B" %} aria-pressed="true" class="current"{% endif %}>B 磕绊/看了提示</button>
+          <button type="submit" name="mark" value="C" title="没做出来/抄题解：安排 4 轮复习（D+1、D+3、D+7、D+14）"{% if item.is_done and item.attempt.mark.value == "C" %} aria-pressed="true" class="current"{% endif %}>C 没做出来/抄题解</button>
+        </div>
+        <p class="muted mark-hint">点标记即保存。A 不安排复习，B 安排 2 轮（D+3、D+14），C 安排 4 轮（D+1、D+3、D+7、D+14）。</p>
+      </div>
     </fieldset>
   </form>
 </article>

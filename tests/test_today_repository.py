@@ -20,7 +20,7 @@ from leetcode_helper.repositories.today import (
     active_topic,
     get_problem_item,
     get_today_view,
-    list_template_codes,
+    list_template_options,
 )
 
 
@@ -343,7 +343,7 @@ def test_unknown_topic_id_raises_lookup_error(session):
 
 
 # ---------------------------------------------------------------------------
-# active_topic / list_template_codes / get_problem_item (moved from
+# active_topic / list_template_options / get_problem_item (moved from
 # web/routes/today.py, plus get_problem_item is new)
 # ---------------------------------------------------------------------------
 
@@ -376,8 +376,31 @@ def test_active_topic_returns_the_active_one(session, topic):
     assert active_topic(session).id == topic.id
 
 
-def test_list_template_codes_empty_when_none(session, topic):
-    assert list_template_codes(session, topic.id) == []
+def test_list_template_options_empty_when_none(session, topic):
+    assert list_template_options(session, topic.id) == []
+
+
+def test_list_template_options_carries_name_and_trigger_signal(session, topic):
+    # C2: the old list_template_codes() discarded `name`/`trigger_signal` and
+    # returned bare codes -- the whole reason the entry panel's template
+    # dropdown was unreadable. Every option needs the real content.
+    from leetcode_helper.models import Template
+
+    session.add(
+        Template(
+            topic_id=topic.id,
+            code="A",
+            name="定长滑窗（入 → 更新 → 出）",
+            trigger_signal="窗口长度固定",
+        )
+    )
+    session.commit()
+
+    options = list_template_options(session, topic.id)
+    assert len(options) == 1
+    assert options[0].code == "A"
+    assert options[0].name == "定长滑窗（入 → 更新 → 出）"
+    assert options[0].trigger_signal == "窗口长度固定"
 
 
 def test_get_problem_item_raises_problem_not_found_for_unknown_id(session):

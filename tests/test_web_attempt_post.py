@@ -250,9 +250,13 @@ def test_double_submission_same_day_corrects_in_place_no_second_row(client, engi
     # The re-rendered row after the second submission must reflect the
     # *corrected* attempt (mark=A, bucket=within), matching what
     # repositories/today.py's "latest wins" rule would show on a fresh
-    # GET /today -- not the original mark=C/over.
-    assert "A / within" in second.text
-    assert "C / over" not in second.text
+    # GET /today -- not the original mark=C/over. The bucket renders through
+    # the `bucket_label` filter (Chinese), not the raw enum value -- "within"
+    # itself must never leak into the page.
+    assert "A / 限时内" in second.text
+    assert "C / 超时" not in second.text
+    assert "已录入：A / within" not in second.text
+    assert "已录入：C / over" not in second.text
 
     with Session(engine) as session:
         attempts = session.exec(select(Attempt).order_by(Attempt.id)).all()

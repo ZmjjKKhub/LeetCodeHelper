@@ -184,9 +184,23 @@ def active_topic(session: Session) -> Topic:
     return topic
 
 
-def list_template_codes(session: Session, topic_id: int) -> list[str]:
+@dataclass(frozen=True)
+class TemplateOption:
+    """What the 模板 <select> needs to render one option: the bare `code` the
+    old list_template_codes() returned told the user nothing ("A", "B", "C..."
+    with no indication of what each one *is*). `name` and `trigger_signal`
+    already live on the Template row -- this just carries them through
+    instead of discarding them.
+    """
+
+    code: str
+    name: str
+    trigger_signal: str
+
+
+def list_template_options(session: Session, topic_id: int) -> list[TemplateOption]:
     return [
-        row.code
+        TemplateOption(code=row.code, name=row.name, trigger_signal=row.trigger_signal)
         for row in session.exec(
             select(Template).where(Template.topic_id == topic_id).order_by(Template.code)
         ).all()

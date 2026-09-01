@@ -13,7 +13,7 @@ from leetcode_helper.repositories.today import (
     active_topic,
     get_problem_item,
     get_today_view,
-    list_template_codes,
+    list_template_options,
 )
 from leetcode_helper.services.attempts import AttemptInput
 
@@ -27,7 +27,7 @@ def today_page(request: Request) -> HTMLResponse:
     with Session(app.state.engine) as session:
         topic = active_topic(session)
         view = get_today_view(session, topic_id=topic.id, today=today)
-        template_codes = list_template_codes(session, topic.id)
+        template_options = list_template_options(session, topic.id)
         return app.state.templates.TemplateResponse(
             request,
             "today.html",
@@ -35,7 +35,7 @@ def today_page(request: Request) -> HTMLResponse:
                 "topic": topic,
                 "today": today,
                 "view": view,
-                "template_codes": template_codes,
+                "template_options": template_options,
             },
         )
 
@@ -69,7 +69,7 @@ def _error_row_response(
     """
     try:
         item = get_problem_item(session, problem_id)
-        template_codes = list_template_codes(session, item.problem.topic_id)
+        template_options = list_template_options(session, item.problem.topic_id)
     except Exception:
         # Either the problem itself doesn't exist (ProblemNotFound) or
         # building a full row failed for some other repository-layer reason
@@ -87,7 +87,7 @@ def _error_row_response(
     return app.state.templates.TemplateResponse(
         request,
         "partials/_problem_row.html",
-        {"item": item, "template_codes": template_codes, "error": error},
+        {"item": item, "template_options": template_options, "error": error},
         status_code=status_code,
     )
 
@@ -133,9 +133,9 @@ def create_attempt(
         # control), and its <select> needs the full template list to be able
         # to show the recorded used_template as selected -- unlike before,
         # template_codes=[] is no longer safe here.
-        template_codes = list_template_codes(session, item.problem.topic_id)
+        template_options = list_template_options(session, item.problem.topic_id)
         return app.state.templates.TemplateResponse(
             request,
             "partials/_problem_row.html",
-            {"item": item, "template_codes": template_codes},
+            {"item": item, "template_options": template_options},
         )
