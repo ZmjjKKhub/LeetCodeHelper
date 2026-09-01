@@ -79,7 +79,7 @@ def main() -> None:
         print(
             "数据库还没有初始化，看起来 migrations 还没跑过。请先执行：\n"
             "  uv run alembic upgrade head\n"
-            "  uv run python -m leetcode_helper.seed <config-file>\n"
+            "  uv run python -m leetcode_helper.seed data/topics/sliding-window\n"
             "然后重新运行 uv run app.py。",
             file=sys.stderr,
         )

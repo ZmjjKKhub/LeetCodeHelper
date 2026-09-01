@@ -66,6 +66,9 @@ def test_main_refuses_to_start_when_schema_missing(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "alembic upgrade head" in err
     assert "leetcode_helper.seed" in err
+    # 提示里的参数必须是可以照着敲的真实路径，不是占位符
+    assert "data/topics/sliding-window" in err
+    assert "<" not in err.split("leetcode_helper.seed")[1].splitlines()[0]
 
 
 def test_main_starts_server_when_schema_ready(monkeypatch):
