@@ -1,7 +1,14 @@
+from pathlib import Path
+
 import pytest
 import yaml
 
 from leetcode_helper.seed.bundle import SeedBundleError, load_bundle
+
+# Repo root, resolved from this file's location rather than the process cwd,
+# so this test passes no matter where pytest is invoked from.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SHIPPED_SLIDING_WINDOW_DIR = REPO_ROOT / "data" / "topics" / "sliding-window"
 
 TOPIC_YAML = """
 code: sliding-window
@@ -217,3 +224,39 @@ def test_start_date_datetime_rejected(tmp_path):
 def test_malformed_yaml_shape_raises_seed_bundle_error(tmp_path, kwargs):
     with pytest.raises(SeedBundleError):
         load_bundle(_write(tmp_path, **kwargs))
+
+
+def test_shipped_sliding_window_bundle_is_valid():
+    # The real bundle a day-one user imports (`uv run python -m
+    # leetcode_helper.seed data/topics/sliding-window`) -- every other test
+    # in this file exercises load_bundle against synthetic YAML in tmp_path,
+    # so nothing ever loaded the shipped files themselves. A typo in a
+    # default_template, or plan_default.yaml referencing a dropped lc_id,
+    # would only be caught here instead of by a real user hitting it.
+    bundle = load_bundle(SHIPPED_SLIDING_WINDOW_DIR)
+
+    assert len(bundle.problems) == 15
+
+    # Cross-check that matters for Phase 1.5, when the remaining problems
+    # and the 30-day plan get appended: the plan's problem references and
+    # the problem set must line up exactly, with nothing on either side
+    # left orphaned.
+    plan_lc_ids = {lc_id for day in bundle.plan.days for lc_id in day.problem_lc_ids}
+    problem_lc_ids = {p.lc_id for p in bundle.problems}
+    assert plan_lc_ids == problem_lc_ids
+
+    # Every default_template must resolve to a template that actually
+    # exists in templates.yaml (load_bundle already enforces this while
+    # parsing, but assert it explicitly here so the intent is visible).
+    template_codes = {t.code for t in bundle.templates}
+    for problem in bundle.problems:
+        if problem.default_template is not None:
+            assert problem.default_template in template_codes
+
+    # No duplicate lc_ids, no empty titles/urls/sections -- a quality bar
+    # a synthetic test bundle wouldn't catch but a shipped one should meet.
+    assert len(problem_lc_ids) == len(bundle.problems)
+    for problem in bundle.problems:
+        assert problem.title
+        assert problem.url
+        assert problem.section
