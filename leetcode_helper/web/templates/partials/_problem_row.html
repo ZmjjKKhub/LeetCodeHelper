@@ -1,5 +1,5 @@
 <article class="problem-row {% if item.is_done %}done{% endif %}" id="problem-{{ item.problem.id }}"
-         x-data="{ open: {{ 'true' if error else 'false' }} }">
+         x-data="{ open: {{ 'true' if error else 'false' }}, count: {{ item.attempt.submit_count if item.is_done else 1 }} }">
   <div class="row-head">
     <a href="{{ item.problem.url }}" target="_blank" rel="noopener">
       {{ item.problem.lc_id }}. {{ item.problem.title }}
@@ -50,26 +50,35 @@
       </label>
     </fieldset>
 
-    {# The mark buttons *are* the submit action: open -> duration -> mark is
-       the whole flow (3 clicks), so picking a mark and saving must collapse
-       into one click rather than staying two separate steps. Each button
-       submits its own name="mark" value, so whichever one is clicked is
-       what gets posted. On a done row, the currently recorded mark carries
-       aria-pressed="true" (and a "current" class) so the user can see what
-       they're changing from. This is a Jinja comment (stripped at render
-       time), not an HTML comment, on purpose: an HTML comment here would be
-       sent to the client and would literally contain the text this form
-       must not show, breaking any test/UX check for its absence. #}
-    <fieldset class="inline">
+    {# 提交次数 must be visible and reachable *before* the mark buttons,
+       since a mark-button click submits the form -- the interaction is
+       over the moment the user reaches for the field otherwise, and
+       first_try_ac (submit_count == 1) would be quietly pinned to 1
+       forever. It's a compact stepper, not a plain number input: the
+       [-]/[+] buttons are type="button" so they never submit the form
+       themselves, and the default (1) requires no interaction, so the
+       flow stays 用时 -> (提交次数, optional) -> 标记, three clicks. #}
+    <fieldset class="inline mark-row">
+      <div class="stepper" role="group" aria-label="提交次数">
+        <button type="button" @click="count = Math.max(1, count - 1)" aria-label="减少提交次数">−</button>
+        <span x-text="count"></span>
+        <button type="button" @click="count = count + 1" aria-label="增加提交次数">+</button>
+      </div>
+      <input type="hidden" name="submit_count" :value="count">
+
+      {# The mark buttons *are* the submit action: open -> duration -> mark is
+         the whole flow (3 clicks), so picking a mark and saving must collapse
+         into one click rather than staying two separate steps. Each button
+         submits its own name="mark" value, so whichever one is clicked is
+         what gets posted. On a done row, the currently recorded mark carries
+         aria-pressed="true" (and a "current" class) so the user can see what
+         they're changing from. This is a Jinja comment (stripped at render
+         time), not an HTML comment, on purpose: an HTML comment here would be
+         sent to the client and would literally contain the text this form
+         must not show, breaking any test/UX check for its absence. #}
       <button type="submit" name="mark" value="A"{% if item.is_done and item.attempt.mark.value == "A" %} aria-pressed="true" class="current"{% endif %}>A</button>
       <button type="submit" name="mark" value="B"{% if item.is_done and item.attempt.mark.value == "B" %} aria-pressed="true" class="current"{% endif %}>B</button>
       <button type="submit" name="mark" value="C"{% if item.is_done and item.attempt.mark.value == "C" %} aria-pressed="true" class="current"{% endif %}>C</button>
-    </fieldset>
-
-    <fieldset class="inline">
-      <label>提交次数
-        <input type="number" name="submit_count" value="{{ item.attempt.submit_count if item.is_done else 1 }}" min="1" step="1" style="width: 6rem">
-      </label>
     </fieldset>
   </form>
 </article>

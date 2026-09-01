@@ -146,8 +146,8 @@ def test_done_item_form_is_prefilled_with_recorded_values(engine):
     b_end = body.index("</button>", b_start)
     assert 'aria-pressed="true"' in body[b_start:b_end]
 
-    # The recorded submit_count (4) prefills the field.
-    assert 'name="submit_count" value="4"' in body
+    # The recorded submit_count (4) seeds the Alpine `count` state.
+    assert "count: 4" in body
 
 
 def test_pending_item_form_defaults_template_and_hx_target(engine):
@@ -196,14 +196,39 @@ def test_form_has_disabled_elt_for_double_submit_guard(engine):
     assert 'hx-disabled-elt="find button"' in body
 
 
-def test_submit_count_field_comes_after_mark_buttons(engine):
-    # submit_count is the least-used field; it must not sit first in tab/
-    # visual order ahead of duration and mark.
+def test_submit_count_field_comes_before_mark_buttons(engine):
+    # C2: submit_count must be visible and reachable *before* the mark
+    # buttons, since clicking a mark button submits the form -- the
+    # interaction is over the moment that happens. It's rendered as a
+    # stepper immediately to the left of the mark buttons.
     seed(engine, with_plan=True)
     body = make_client(engine).get("/today").text
-    mark_button_index = body.index('name="mark" value="A"')
     submit_count_index = body.index('name="submit_count"')
-    assert mark_button_index < submit_count_index
+    mark_button_index = body.index('name="mark" value="A"')
+    assert submit_count_index < mark_button_index
+
+
+def test_stepper_buttons_are_type_button_not_submit(engine):
+    # The [-]/[+] steppers must never submit the form themselves -- only the
+    # mark buttons (type="submit") do.
+    seed(engine, with_plan=True)
+    body = make_client(engine).get("/today").text
+    stepper_start = body.index('class="stepper"')
+    stepper_end = body.index("</div>", stepper_start)
+    stepper_html = body[stepper_start:stepper_end]
+    assert stepper_html.count('type="button"') == 2
+    assert 'type="submit"' not in stepper_html
+
+    assert '<button type="submit" name="mark" value="A"' in body
+    assert '<button type="submit" name="mark" value="B"' in body
+    assert '<button type="submit" name="mark" value="C"' in body
+
+
+def test_submit_count_defaults_to_one_and_min_is_one(engine):
+    seed(engine, with_plan=True)
+    body = make_client(engine).get("/today").text
+    assert "count: 1" in body
+    assert "Math.max(1, count - 1)" in body
 
 
 def test_plan_day_with_zero_items_is_empty_state(engine):

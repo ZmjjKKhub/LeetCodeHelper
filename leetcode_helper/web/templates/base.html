@@ -16,6 +16,11 @@
     fieldset.inline { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
     fieldset.inline label { margin: 0; }
     .error { color: var(--pico-del-color, crimson); }
+    .mark-row { align-items: center; }
+    .stepper { display: flex; align-items: center; gap: .35rem; }
+    .stepper button { width: 2rem; padding: 0 0; margin: 0; }
+    .stepper span { min-width: 1.5em; text-align: center; }
+    button[aria-pressed="true"].current { outline: 2px solid var(--pico-primary); }
   </style>
 </head>
 <body>
