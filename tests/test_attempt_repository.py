@@ -306,7 +306,24 @@ def test_list_history_topic_with_no_attempts_returns_empty(session, topic):
     assert rows == []
 
 
-def test_list_history_same_date_ordered_by_id_desc(session, problem):
+def test_list_history_same_date_ordered_by_id_desc(session, topic, problem):
+    # Two *different* problems attempted on the same date -- same-problem/
+    # same-date/same-kind now collapses into a single corrected row (see the
+    # correction tests below), so the id-desc tie-break is exercised here
+    # with two distinct problems instead.
+    other_problem = Problem(
+        topic_id=topic.id,
+        lc_id=3,
+        title="其他题",
+        url="https://leetcode.cn/problems/other/",
+        difficulty=Difficulty.medium,
+        section="§2.2",
+        section_name="越长越合法",
+    )
+    session.add(other_problem)
+    session.commit()
+    session.refresh(other_problem)
+
     first = record_attempt(
         session,
         AttemptInput(problem_id=problem.id, duration_bucket=DurationBucket.within, mark=Mark.A),
@@ -314,12 +331,123 @@ def test_list_history_same_date_ordered_by_id_desc(session, problem):
     )
     second = record_attempt(
         session,
-        AttemptInput(problem_id=problem.id, duration_bucket=DurationBucket.over, mark=Mark.B),
+        AttemptInput(problem_id=other_problem.id, duration_bucket=DurationBucket.over, mark=Mark.B),
         today=date(2026, 9, 1),
     )
 
     rows = list_history(session, topic_id=problem.topic_id, limit=10)
     assert [row.attempt.id for row in rows] == [second.id, first.id]
+
+
+def test_record_attempt_correction_updates_existing_row_not_insert_second(session, problem):
+    """A misclick (B instead of A) must be correctable by re-posting -- and
+    the correction must UPDATE the existing Attempt row rather than add a
+    second one, since Attempt rows are what R5/P7 aggregate over."""
+    first = record_attempt(
+        session,
+        AttemptInput(problem_id=problem.id, duration_bucket=DurationBucket.over, mark=Mark.B),
+        today=date(2026, 9, 1),
+    )
+
+    corrected = record_attempt(
+        session,
+        AttemptInput(problem_id=problem.id, duration_bucket=DurationBucket.within, mark=Mark.A),
+        today=date(2026, 9, 1),
+    )
+
+    rows = session.exec(select(Attempt)).all()
+    assert len(rows) == 1
+    assert corrected.id == first.id
+
+
+def test_record_attempt_correction_persists_values_and_resnapshots_time_limit(session, problem, topic):
+    first = record_attempt(
+        session,
+        AttemptInput(
+            problem_id=problem.id,
+            duration_bucket=DurationBucket.unsolved,
+            mark=Mark.C,
+            submit_count=5,
+            used_template="C",
+        ),
+        today=date(2026, 9, 1),
+    )
+    assert first.time_limit_sec == 1200
+
+    # Topic config changes between the two submissions -- the correction's
+    # snapshot must reflect the config *at correction time*, not the stale
+    # value left over from the original row.
+    topic.config_json = (
+        '{"code": "sliding-window", "name": "sw", '
+        '"time_limits": {"easy": 1, "medium": 4242, "hard": 1}, "card_fields": []}'
+    )
+    session.add(topic)
+    session.commit()
+
+    corrected = record_attempt(
+        session,
+        AttemptInput(
+            problem_id=problem.id,
+            duration_bucket=DurationBucket.within,
+            mark=Mark.A,
+            submit_count=1,
+            used_template=None,
+        ),
+        today=date(2026, 9, 1),
+    )
+
+    assert corrected.id == first.id
+    assert corrected.duration_bucket is DurationBucket.within
+    assert corrected.mark is Mark.A
+    assert corrected.submit_count == 1
+    assert corrected.used_template is None
+    assert corrected.time_limit_sec == 4242
+
+    session.refresh(corrected)
+    assert corrected.duration_bucket is DurationBucket.within
+    assert corrected.time_limit_sec == 4242
+
+
+def test_record_attempt_correction_leaves_created_at_and_id_alone(session, problem):
+    first = record_attempt(
+        session,
+        AttemptInput(problem_id=problem.id, duration_bucket=DurationBucket.over, mark=Mark.B),
+        today=date(2026, 9, 1),
+    )
+    original_created_at = first.created_at
+    original_id = first.id
+
+    corrected = record_attempt(
+        session,
+        AttemptInput(problem_id=problem.id, duration_bucket=DurationBucket.within, mark=Mark.A),
+        today=date(2026, 9, 1),
+    )
+
+    assert corrected.id == original_id
+    assert corrected.created_at == original_created_at
+
+
+def test_record_attempt_correction_does_not_touch_other_dates_or_kinds(session, problem):
+    """Only the (problem_id, attempt_date, kind=new) row for *this* date is
+    corrected -- a review-kind attempt or an attempt on a different date must
+    be left alone."""
+    other_date = record_attempt(
+        session,
+        AttemptInput(problem_id=problem.id, duration_bucket=DurationBucket.within, mark=Mark.A),
+        today=date(2026, 8, 31),
+    )
+
+    record_attempt(
+        session,
+        AttemptInput(problem_id=problem.id, duration_bucket=DurationBucket.over, mark=Mark.B),
+        today=date(2026, 9, 1),
+    )
+
+    rows = session.exec(select(Attempt)).all()
+    assert len(rows) == 2
+    session.refresh(other_date)
+    assert other_date.duration_bucket is DurationBucket.within
+    assert other_date.mark is Mark.A
 
 
 def test_list_history_first_try_ac_false_on_resubmit(session, problem):

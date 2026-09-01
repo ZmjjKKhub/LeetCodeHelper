@@ -150,6 +150,65 @@ def test_fallback_lists_untouched_problems_when_no_plan_day(session, topic):
     assert view.items[1].time_limit_sec == 2100
 
 
+def test_fallback_lists_problem_attempted_today_as_done(session, topic):
+    """A misclick or a correction should not make the just-recorded row
+    vanish from the fallback list on reload -- it must still show up, as a
+    done row carrying today's attempt."""
+    solved_today = add_problem(session, topic, 209)
+    still_pending = add_problem(session, topic, 3, section="§2.1")
+    session.add(
+        Attempt(
+            problem_id=solved_today.id,
+            attempt_date=date(2026, 9, 1),
+            duration_bucket=DurationBucket.within,
+            time_limit_sec=1200,
+            mark=Mark.A,
+        )
+    )
+    session.commit()
+
+    view = get_today_view(session, topic_id=topic.id, today=date(2026, 9, 1))
+
+    assert view.is_fallback is True
+    assert {item.problem.lc_id for item in view.items} == {209, 3}
+    today_item = next(item for item in view.items if item.problem.lc_id == 209)
+    assert today_item.is_done is True
+    assert today_item.attempt.mark is Mark.A
+    pending_item = next(item for item in view.items if item.problem.lc_id == 3)
+    assert pending_item.is_done is False
+
+
+def test_fallback_still_excludes_problem_attempted_on_earlier_date_but_keeps_today(session, topic):
+    solved_earlier = add_problem(session, topic, 209)
+    solved_today = add_problem(session, topic, 3, section="§2.1")
+    session.add(
+        Attempt(
+            problem_id=solved_earlier.id,
+            attempt_date=date(2026, 8, 20),
+            duration_bucket=DurationBucket.within,
+            time_limit_sec=1200,
+            mark=Mark.A,
+        )
+    )
+    session.add(
+        Attempt(
+            problem_id=solved_today.id,
+            attempt_date=date(2026, 9, 1),
+            duration_bucket=DurationBucket.over,
+            time_limit_sec=1200,
+            mark=Mark.B,
+        )
+    )
+    session.commit()
+
+    view = get_today_view(session, topic_id=topic.id, today=date(2026, 9, 1))
+
+    assert view.is_fallback is True
+    assert [item.problem.lc_id for item in view.items] == [3]
+    assert view.items[0].is_done is True
+    assert view.items[0].attempt.mark is Mark.B
+
+
 def test_fallback_groups_by_section(session, topic):
     add_problem(session, topic, 3, section="§2.1")
     add_problem(session, topic, 76, section="§2.2")

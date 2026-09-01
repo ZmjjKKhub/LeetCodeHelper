@@ -19,7 +19,10 @@ def test_post_attempt_persists_and_returns_updated_row(client, engine):
     assert response.status_code == 200
     assert 'id="problem-1"' in response.text
     assert "已录入" in response.text
-    assert "<form" not in response.text
+    # C1: a done row keeps a correctable form (reachable via 修改), not a
+    # dead "<form" not in response.text" wall.
+    assert "<form" in response.text
+    assert "修改" in response.text
 
     with Session(engine) as session:
         attempt = session.exec(select(Attempt)).one()
@@ -217,7 +220,12 @@ def test_post_attempt_corrupt_topic_config_is_422_not_500(engine):
         assert session.exec(select(Attempt)).all() == []
 
 
-def test_double_submission_same_day_keeps_latest_attempt_and_no_crash(client, engine):
+def test_double_submission_same_day_corrects_in_place_no_second_row(client, engine):
+    # C1: re-posting for the same problem/day is a *correction* -- via the
+    # 修改 control reopening the same form -- not a second attempt. It must
+    # update the existing Attempt row, not add one: Attempt rows are what
+    # R5/P7 aggregate over, and a stray duplicate would double-count and
+    # give the user no way to clean it up.
     first = client.post(
         "/attempts",
         data={
@@ -240,27 +248,26 @@ def test_double_submission_same_day_keeps_latest_attempt_and_no_crash(client, en
     assert first.status_code == 200
     assert second.status_code == 200
     # The re-rendered row after the second submission must reflect the
-    # *second* attempt (mark=A, bucket=within), matching what
+    # *corrected* attempt (mark=A, bucket=within), matching what
     # repositories/today.py's "latest wins" rule would show on a fresh
-    # GET /today -- not the first attempt's mark=C/over.
+    # GET /today -- not the original mark=C/over.
     assert "A / within" in second.text
     assert "C / over" not in second.text
 
     with Session(engine) as session:
         attempts = session.exec(select(Attempt).order_by(Attempt.id)).all()
-        assert len(attempts) == 2
-        assert attempts[0].mark is Mark.C
-        assert attempts[1].mark is Mark.A
+        assert len(attempts) == 1
+        assert attempts[0].mark is Mark.A
+        assert attempts[0].duration_bucket is DurationBucket.within
+        assert attempts[0].submit_count == 1
 
 
 def test_get_today_after_post_is_consistent_with_fallback_filtering(client):
     # This fixture has no active Plan/PlanDay, so GET /today runs in
-    # "fallback" mode: repositories/today.py's get_today_view excludes any
-    # problem with an existing Attempt entirely (it's not "still to do"
-    # under the fallback listing), rather than showing it as done inline.
-    # POST /attempts must not fight that -- after recording an attempt the
-    # only problem in this fixture disappears from the todo list, same as if
-    # the attempt had been seeded directly and the page loaded fresh.
+    # "fallback" mode. C1: repositories/today.py's get_today_view only
+    # excludes a problem attempted on an *earlier* date -- a problem
+    # attempted *today* must still show up, as a done row, so it stays
+    # correctable instead of vanishing on reload.
     post_response = client.post(
         "/attempts",
         data={"problem_id": "1", "duration_bucket": "within", "mark": "A", "submit_count": "1"},
@@ -269,6 +276,8 @@ def test_get_today_after_post_is_consistent_with_fallback_filtering(client):
     assert "已录入" in post_response.text
 
     body = client.get("/today").text
-    assert "没有待做的题了" in body
+    assert "没有待做的题了" not in body
+    assert "已录入" in body
+    assert "长度最小的子数组" in body
 
 

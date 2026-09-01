@@ -82,7 +82,9 @@ def test_duration_formatting_for_hard_limit(engine):
     assert "350:0" not in body
 
 
-def test_done_item_renders_without_form_and_shows_mark(engine):
+def test_done_item_shows_mark_and_a_reachable_correction_control(engine):
+    # C1: a recorded attempt must stay correctable -- a done row keeps a 修改
+    # control (not just the bare "已录入" label) that reopens the same form.
     topic_id, problem_id = seed(engine, with_plan=True)
     with Session(engine) as session:
         session.add(
@@ -100,8 +102,52 @@ def test_done_item_renders_without_form_and_shows_mark(engine):
 
     body = make_client(engine).get("/today").text
     assert "已录入" in body
-    assert 'name="duration_bucket"' not in body
-    assert "<form" not in body
+    assert "修改" in body
+    # 录入 (the "not started yet" label) must not also be present on a done row.
+    assert "录入</a>" not in body
+
+
+def test_done_item_form_is_prefilled_with_recorded_values(engine):
+    topic_id, problem_id = seed(engine, with_plan=True)
+    with Session(engine) as session:
+        session.add(Template(topic_id=topic_id, code="C", name="模板C"))
+        session.add(Template(topic_id=topic_id, code="A", name="模板A"))
+        session.add(
+            Attempt(
+                problem_id=problem_id,
+                attempt_date=date(2026, 9, 1),
+                kind=AttemptKind.new,
+                duration_bucket=DurationBucket.over,
+                time_limit_sec=1200,
+                submit_count=4,
+                mark=Mark.B,
+                used_template="A",
+            )
+        )
+        session.commit()
+
+    body = make_client(engine).get("/today").text
+
+    # The recorded duration_bucket radio is checked.
+    assert 'value="over" ' in body and "checked" in body
+    over_start = body.index('value="over"')
+    over_end = body.index("</label>", over_start)
+    assert "checked" in body[over_start:over_end]
+
+    # The recorded used_template ("A") is selected in the <select>.
+    select_start = body.index("<select")
+    select_end = body.index("</select>", select_start)
+    select_html = body[select_start:select_end]
+    idx_a = select_html.index('value="A"')
+    assert "selected" in select_html[idx_a : idx_a + 40]
+
+    # The recorded mark (B) is indicated as currently selected.
+    b_start = body.index('name="mark" value="B"')
+    b_end = body.index("</button>", b_start)
+    assert 'aria-pressed="true"' in body[b_start:b_end]
+
+    # The recorded submit_count (4) prefills the field.
+    assert 'name="submit_count" value="4"' in body
 
 
 def test_pending_item_form_defaults_template_and_hx_target(engine):
@@ -191,6 +237,37 @@ def test_plan_day_with_zero_items_is_empty_state(engine):
 
 
 def test_fallback_with_all_attempted_is_empty_state(engine):
+    # Attempted on an *earlier* date, not today -- a problem attempted today
+    # must still show up in the fallback list (as a done row, see
+    # test_fallback_shows_todays_attempt_as_done_row below), so this test's
+    # "nothing left" state has to be earned with an older attempt.
+    topic_id, problem_id = seed(engine, with_plan=False)
+    with Session(engine) as session:
+        session.add(
+            Attempt(
+                problem_id=problem_id,
+                attempt_date=date(2026, 8, 20),
+                kind=AttemptKind.new,
+                duration_bucket=DurationBucket.within,
+                time_limit_sec=1200,
+                submit_count=1,
+                mark=Mark.A,
+            )
+        )
+        session.commit()
+
+    body = make_client(engine).get("/today").text
+    assert "没有待做的题了" in body
+    # The fallback empty state means nothing is left to practice at all --
+    # give the user the exact command to re-import after adding more
+    # problems, instead of a dead end.
+    assert "uv run python -m leetcode_helper.seed data/topics/sliding-window" in body
+
+
+def test_fallback_shows_todays_attempt_as_done_row(engine):
+    # C1: a problem attempted today must not vanish from the fallback list
+    # on reload -- it must still render, as a done row that can be
+    # corrected, not silently disappear.
     topic_id, problem_id = seed(engine, with_plan=False)
     with Session(engine) as session:
         session.add(
@@ -207,11 +284,9 @@ def test_fallback_with_all_attempted_is_empty_state(engine):
         session.commit()
 
     body = make_client(engine).get("/today").text
-    assert "没有待做的题了" in body
-    # The fallback empty state means nothing is left to practice at all --
-    # give the user the exact command to re-import after adding more
-    # problems, instead of a dead end.
-    assert "uv run python -m leetcode_helper.seed data/topics/sliding-window" in body
+    assert "没有待做的题了" not in body
+    assert "长度最小的子数组" in body
+    assert "已录入" in body
 
 
 def test_problem_link_opens_in_new_tab(engine):

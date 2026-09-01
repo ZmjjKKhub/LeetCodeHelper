@@ -7,6 +7,12 @@
     <span class="muted">{{ item.problem.difficulty.value }} · {{ item.problem.section }} · 限时 {{ item.time_limit_sec | limit }}</span>
     {% if item.is_done %}
       <span class="muted">已录入：{{ item.attempt.mark.value }} / {{ item.attempt.duration_bucket.value }}</span>
+      {# A recorded attempt must stay correctable: mark drives the whole
+         Phase 2 review schedule, and the mark buttons *are* the submit
+         buttons -- a misclick (B instead of A) is one click away and, until
+         this control existed, permanent. 修改 reopens the same form,
+         prefilled below with what was actually recorded. #}
+      <a href="#" @click.prevent="open = !open" role="button" class="secondary outline">修改</a>
     {% else %}
       <a href="#" @click.prevent="open = !open" role="button" class="secondary outline">录入</a>
     {% endif %}
@@ -16,7 +22,6 @@
     <p class="error">保存失败：{{ error }}</p>
   {% endif %}
 
-  {% if not item.is_done %}
   <form class="panel" x-show="open" x-cloak
         hx-post="/attempts"
         hx-target="#problem-{{ item.problem.id }}"
@@ -25,9 +30,9 @@
     <input type="hidden" name="problem_id" value="{{ item.problem.id }}">
 
     <fieldset class="inline">
-      <label><input type="radio" name="duration_bucket" value="within" required> 限时内</label>
-      <label><input type="radio" name="duration_bucket" value="over"> 超时</label>
-      <label><input type="radio" name="duration_bucket" value="unsolved"> 没做出来</label>
+      <label><input type="radio" name="duration_bucket" value="within" required{% if item.is_done and item.attempt.duration_bucket.value == "within" %} checked{% endif %}> 限时内</label>
+      <label><input type="radio" name="duration_bucket" value="over"{% if item.is_done and item.attempt.duration_bucket.value == "over" %} checked{% endif %}> 超时</label>
+      <label><input type="radio" name="duration_bucket" value="unsolved"{% if item.is_done and item.attempt.duration_bucket.value == "unsolved" %} checked{% endif %}> 没做出来</label>
     </fieldset>
 
     <fieldset class="inline">
@@ -35,7 +40,11 @@
         <select name="used_template">
           <option value="">无</option>
           {% for code in template_codes %}
-            <option value="{{ code }}" {% if code == item.problem.default_template %}selected{% endif %}>{{ code }}</option>
+            {% if item.is_done %}
+              <option value="{{ code }}" {% if code == item.attempt.used_template %}selected{% endif %}>{{ code }}</option>
+            {% else %}
+              <option value="{{ code }}" {% if code == item.problem.default_template %}selected{% endif %}>{{ code }}</option>
+            {% endif %}
           {% endfor %}
         </select>
       </label>
@@ -45,21 +54,22 @@
        the whole flow (3 clicks), so picking a mark and saving must collapse
        into one click rather than staying two separate steps. Each button
        submits its own name="mark" value, so whichever one is clicked is
-       what gets posted. This is a Jinja comment (stripped at render time),
-       not an HTML comment, on purpose: an HTML comment here would be sent
-       to the client and would literally contain the text this form must
-       not show, breaking any test/UX check for its absence. #}
+       what gets posted. On a done row, the currently recorded mark carries
+       aria-pressed="true" (and a "current" class) so the user can see what
+       they're changing from. This is a Jinja comment (stripped at render
+       time), not an HTML comment, on purpose: an HTML comment here would be
+       sent to the client and would literally contain the text this form
+       must not show, breaking any test/UX check for its absence. #}
     <fieldset class="inline">
-      <button type="submit" name="mark" value="A">A</button>
-      <button type="submit" name="mark" value="B">B</button>
-      <button type="submit" name="mark" value="C">C</button>
+      <button type="submit" name="mark" value="A"{% if item.is_done and item.attempt.mark.value == "A" %} aria-pressed="true" class="current"{% endif %}>A</button>
+      <button type="submit" name="mark" value="B"{% if item.is_done and item.attempt.mark.value == "B" %} aria-pressed="true" class="current"{% endif %}>B</button>
+      <button type="submit" name="mark" value="C"{% if item.is_done and item.attempt.mark.value == "C" %} aria-pressed="true" class="current"{% endif %}>C</button>
     </fieldset>
 
     <fieldset class="inline">
       <label>提交次数
-        <input type="number" name="submit_count" value="1" min="1" step="1" style="width: 6rem">
+        <input type="number" name="submit_count" value="{{ item.attempt.submit_count if item.is_done else 1 }}" min="1" step="1" style="width: 6rem">
       </label>
     </fieldset>
   </form>
-  {% endif %}
 </article>

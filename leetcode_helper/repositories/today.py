@@ -138,22 +138,38 @@ def get_today_view(session: Session, *, topic_id: int, today: date) -> TodayView
             plan_day_id=day.id,
         )
 
-    attempted_ids = set(
+    # Only a problem attempted on an *earlier* date drops out of the fallback
+    # list -- a problem attempted *today* must still show up (as a done row,
+    # via _todays_attempts below), or a just-recorded attempt would vanish
+    # from the page on reload with no way to correct it.
+    attempted_before_ids = set(
         session.exec(
             select(Attempt.problem_id)
             .join(Problem, Problem.id == Attempt.problem_id)
-            .where(Problem.topic_id == topic_id)
+            .where(Problem.topic_id == topic_id, Attempt.attempt_date < today)
         ).all()
     )
-    problems = session.exec(
-        select(Problem)
-        .where(Problem.topic_id == topic_id)
-        .order_by(Problem.section, Problem.lc_id)
-    ).all()
+    problems = [
+        problem
+        for problem in session.exec(
+            select(Problem)
+            .where(Problem.topic_id == topic_id)
+            .order_by(Problem.section, Problem.lc_id)
+        ).all()
+        if problem.id not in attempted_before_ids
+    ]
+    attempts = _todays_attempts(session, [problem.id for problem in problems], today)
     items = [
-        TodayItem(problem=problem, time_limit_sec=time_limit_for(config, problem.difficulty))
+        TodayItem(
+            problem=problem,
+            time_limit_sec=(
+                attempts[problem.id].time_limit_sec
+                if problem.id in attempts
+                else time_limit_for(config, problem.difficulty)
+            ),
+            attempt=attempts.get(problem.id),
+        )
         for problem in problems
-        if problem.id not in attempted_ids
     ]
     return TodayView(config=config, items=items, is_fallback=True)
 

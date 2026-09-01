@@ -115,3 +115,24 @@ def test_history_page_no_active_topic_returns_503(engine):
     client = make_client(engine)
     resp = client.get("/history")
     assert resp.status_code == 503
+
+
+def test_history_shows_one_row_per_corrected_attempt_not_two(engine):
+    # C1: correcting a misclick via POST /attempts must update the existing
+    # Attempt row in place -- history must never show a stray second row
+    # for the same correction, or R5's 一次 AC 率 / P7's C 类占比 double-count it.
+    _, problem_id = seed(engine, with_plan=False)
+    client = make_client(engine)
+
+    client.post(
+        "/attempts",
+        data={"problem_id": str(problem_id), "duration_bucket": "over", "mark": "B", "submit_count": "1"},
+    )
+    client.post(
+        "/attempts",
+        data={"problem_id": str(problem_id), "duration_bucket": "within", "mark": "A", "submit_count": "1"},
+    )
+
+    body = client.get("/history").text
+    assert body.count("2026-09-01") == 1
+    assert "A" in body

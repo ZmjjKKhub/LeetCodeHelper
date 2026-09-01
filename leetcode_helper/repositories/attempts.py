@@ -56,9 +56,41 @@ def record_attempt(
     # build_attempt is pure and validates its input (submit_count, duration_sec)
     # before any Attempt object is constructed. If it raises, nothing has been
     # added to the session yet, so the session stays clean -- no rollback needed.
-    attempt = build_attempt(
+    built = build_attempt(
         data, difficulty=problem.difficulty, config=config, today=today, kind=kind
     )
+
+    # Correction, not a second attempt: since the mark buttons *are* the
+    # submit action (see partials/_problem_row.html), a misclick is likely,
+    # and Attempt rows are what R5/P7 aggregate over -- a stray second row
+    # for the same (problem_id, attempt_date, kind) would double-count and
+    # the user would have no way to clean it up. If one already exists,
+    # overwrite it in place instead of inserting a new one; created_at and
+    # id are left untouched. Ordered by id desc so that if more than one
+    # such row somehow exists already (pre-dating this change, or a stale
+    # second browser tab), the *latest* one is the one corrected -- the
+    # same "latest attempt wins" convention repositories/today.py's read
+    # side uses; the older duplicate(s) are left alone, not deleted.
+    existing = session.exec(
+        select(Attempt)
+        .where(
+            Attempt.problem_id == data.problem_id,
+            Attempt.attempt_date == today,
+            Attempt.kind == kind,
+        )
+        .order_by(Attempt.id.desc())
+    ).first()
+
+    if existing is not None:
+        existing.duration_bucket = built.duration_bucket
+        existing.duration_sec = built.duration_sec
+        existing.time_limit_sec = built.time_limit_sec
+        existing.submit_count = built.submit_count
+        existing.mark = built.mark
+        existing.used_template = built.used_template
+        attempt = existing
+    else:
+        attempt = built
     session.add(attempt)
 
     # Only an *active* plan's PlanItem may be marked done. An archived plan is

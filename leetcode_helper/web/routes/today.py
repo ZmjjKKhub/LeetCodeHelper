@@ -129,12 +129,13 @@ def create_attempt(
             )
 
         item = get_problem_item(session, problem_id, attempt=attempt)
-        # template_codes=[] is safe here only because a done item (item.attempt
-        # is set) never renders the <form>/<select> branch that reads
-        # template_codes -- see partials/_problem_row.html's `{% if not
-        # item.is_done %}` guard.
+        # A done row now also renders the form (for correction, via the 修改
+        # control), and its <select> needs the full template list to be able
+        # to show the recorded used_template as selected -- unlike before,
+        # template_codes=[] is no longer safe here.
+        template_codes = list_template_codes(session, item.problem.topic_id)
         return app.state.templates.TemplateResponse(
             request,
             "partials/_problem_row.html",
-            {"item": item, "template_codes": []},
+            {"item": item, "template_codes": template_codes},
         )
