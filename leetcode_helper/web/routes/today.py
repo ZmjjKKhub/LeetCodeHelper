@@ -7,7 +7,6 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlmodel import Session
 
-from leetcode_helper.models import DurationBucket, Mark
 from leetcode_helper.repositories.attempts import ProblemNotFound, record_attempt
 from leetcode_helper.repositories.today import (
     active_topic,
@@ -15,7 +14,7 @@ from leetcode_helper.repositories.today import (
     get_today_view,
     list_template_options,
 )
-from leetcode_helper.services.attempts import AttemptInput
+from leetcode_helper.services.attempts import AttemptInput, Outcome, split_outcome
 
 router = APIRouter()
 
@@ -96,14 +95,22 @@ def _error_row_response(
 def create_attempt(
     request: Request,
     problem_id: int = Form(...),
-    duration_bucket: DurationBucket = Form(...),
-    mark: Mark = Form(...),
+    outcome: Outcome = Form(...),
     submit_count: int = Form(1),
     used_template: str = Form(""),
     duration_sec: int | None = Form(None),
 ) -> HTMLResponse:
     app = request.app
     today: date_type = app.state.today_provider()
+
+    # The split from one merged UI choice into the two columns Attempt still
+    # stores happens right here, at the route boundary -- AttemptInput,
+    # build_attempt, and the repository never learn about Outcome. That keeps
+    # the business rule (services/attempts.py::split_outcome) testable
+    # without a DB or a request, and keeps duration_bucket/mark as the
+    # authoritative columns Phase 2's R2 rule and the planned FSRS scheduler
+    # read directly.
+    duration_bucket, mark = split_outcome(outcome)
 
     with Session(app.state.engine) as session:
         try:

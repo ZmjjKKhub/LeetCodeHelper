@@ -1,3 +1,13 @@
+{# current_outcome is computed once, up top, because it drives both the
+   done-row summary line and which outcome button (if any) below gets
+   aria-pressed="true"/class="current". outcome_of is total and never
+   raises, but it is also not perfectly invertible: a stored
+   (duration_bucket, mark) combination the new four-option UI cannot itself
+   produce -- e.g. (within, C) or (over, A), left over from older rows or
+   direct DB/Phase-2-review writes -- comes back as None here, and both call
+   sites below already treat None as "mark nothing as current" rather than
+   guessing. #}
+{% set current_outcome = (item.attempt | outcome_of) if item.is_done else None %}
 <article class="problem-row {% if item.is_done %}done{% endif %}" id="problem-{{ item.problem.id }}"
          x-data="{ open: {{ 'true' if error else 'false' }}, count: {{ item.attempt.submit_count if item.is_done else 1 }} }">
   <div class="row-head">
@@ -6,12 +16,19 @@
     </a>
     <span class="muted">{{ item.problem.difficulty.value }} · {{ item.problem.section }} · 限时 {{ item.time_limit_sec | limit }}</span>
     {% if item.is_done %}
-      <span class="muted">已录入：{{ item.attempt.mark.value }} / {{ item.attempt.duration_bucket | bucket_label }}</span>
+      {% if current_outcome %}
+        <span class="muted">已录入：{{ current_outcome | outcome_label }}</span>
+      {% else %}
+        {# Unreachable-from-the-UI combination (e.g. stored within/C or
+           over/A) -- fall back to the old raw mark + bucket-label rendering
+           instead of guessing at an outcome that doesn't exist. #}
+        <span class="muted">已录入：{{ item.attempt.mark.value }} / {{ item.attempt.duration_bucket | bucket_label }}</span>
+      {% endif %}
       {# A recorded attempt must stay correctable: mark drives the whole
-         Phase 2 review schedule, and the mark buttons *are* the submit
-         buttons -- a misclick (B instead of A) is one click away and, until
-         this control existed, permanent. 修改 reopens the same form,
-         prefilled below with what was actually recorded. #}
+         Phase 2 review schedule, and the outcome buttons *are* the submit
+         buttons -- a misclick is one click away and, until this control
+         existed, permanent. 修改 reopens the same form, prefilled below
+         with what was actually recorded. #}
       <a href="#" @click.prevent="open = !open" role="button" class="secondary outline">修改</a>
     {% else %}
       <a href="#" @click.prevent="open = !open" role="button" class="secondary outline">录入</a>
@@ -30,15 +47,6 @@
     <input type="hidden" name="problem_id" value="{{ item.problem.id }}">
 
     <fieldset class="field-row">
-      <legend>用时（限时 {{ item.time_limit_sec | limit }}）</legend>
-      <div class="field-control inline">
-        <label><input type="radio" name="duration_bucket" value="within" required{% if item.is_done and item.attempt.duration_bucket.value == "within" %} checked{% endif %}> 限时内</label>
-        <label><input type="radio" name="duration_bucket" value="over"{% if item.is_done and item.attempt.duration_bucket.value == "over" %} checked{% endif %}> 超时</label>
-        <label><input type="radio" name="duration_bucket" value="unsolved"{% if item.is_done and item.attempt.duration_bucket.value == "unsolved" %} checked{% endif %}> 没做出来</label>
-      </div>
-    </fieldset>
-
-    <fieldset class="field-row">
       <legend>用了哪个模板</legend>
       <div class="field-control">
         <select name="used_template">
@@ -54,14 +62,15 @@
       </div>
     </fieldset>
 
-    {# 提交次数 must be visible and reachable *before* the mark buttons,
-       since a mark-button click submits the form -- the interaction is
-       over the moment the user reaches for the field otherwise, and
+    {# 提交次数 must be visible and reachable *before* the outcome buttons,
+       since clicking an outcome button submits the form -- the interaction
+       is over the moment the user reaches for the field otherwise, and
        first_try_ac (submit_count == 1) would be quietly pinned to 1
        forever. It's a compact stepper, not a plain number input: the
        [-]/[+] buttons are type="button" so they never submit the form
-       themselves, and the default (1) requires no interaction, so the
-       flow stays 用时 -> (提交次数, optional) -> 标记, three clicks. #}
+       themselves, and the default (1) requires no interaction, so the flow
+       stays 录入(open) -> (提交次数/模板, optional) -> 今天做得怎么样, two
+       clicks. #}
     <fieldset class="field-row">
       <legend>提交次数</legend>
       <div class="field-control">
@@ -74,25 +83,48 @@
       </div>
     </fieldset>
 
-    {# The mark buttons *are* the submit action: open -> duration -> mark is
-       the whole flow (3 clicks), so picking a mark and saving must collapse
-       into one click rather than staying two separate steps. Each button
-       submits its own name="mark" value, so whichever one is clicked is
-       what gets posted. On a done row, the currently recorded mark carries
-       aria-pressed="true" (and a "current" class) so the user can see what
-       they're changing from. This is a Jinja comment (stripped at render
-       time), not an HTML comment, on purpose: an HTML comment here would be
-       sent to the client and would literally contain the text this form
-       must not show, breaking any test/UX check for its absence. #}
-    <fieldset class="field-row mark-row">
-      <legend>掌握程度（决定复习安排）</legend>
+    {# The outcome buttons *are* the submit action: open -> (提交次数/模板) ->
+       outcome is the whole flow (two clicks), so picking an outcome and
+       saving must collapse into one click rather than staying two separate
+       steps. Each button submits its own name="outcome" value, so whichever
+       one is clicked is what gets posted. This merges the old two-question
+       用时/掌握程度 pair into one: 用时 alone could not distinguish "限时内,
+       真懂了" from "限时内, 但是硬套模板/蒙的" -- within_shaky exists
+       specifically to keep that case from silently becoming a clean A that
+       never gets a review scheduled. See services/attempts.py::split_outcome
+       for the (duration_bucket, mark) each option writes.
+
+       DOM order: this fieldset comes *last* among interactive controls, on
+       purpose -- 提交次数 and 用了哪个模板 must both be reachable before a
+       click can submit the form, which is only guaranteed if they appear
+       earlier in the DOM (tab order and "click reaches them" both follow DOM
+       order here; there is no CSS order: override).
+
+       On a done row, the currently recorded outcome (if any -- see
+       current_outcome above) carries aria-pressed="true" (and a "current"
+       class) so the user can see what they're changing from. This is a
+       Jinja comment (stripped at render time), not an HTML comment, on
+       purpose: an HTML comment here would be sent to the client and would
+       literally contain text this form must not show, breaking any
+       test/UX check for its absence. #}
+    <fieldset class="field-row outcome-row">
+      <legend>今天做得怎么样？（点一下即保存）</legend>
       <div class="field-control">
-        <div class="mark-buttons">
-          <button type="submit" name="mark" value="A" title="一次过，思路直接：不安排复习"{% if item.is_done and item.attempt.mark.value == "A" %} aria-pressed="true" class="current"{% endif %}>A 一次过，思路直接</button>
-          <button type="submit" name="mark" value="B" title="磕绊/看了提示：安排 2 轮复习（D+3、D+14）"{% if item.is_done and item.attempt.mark.value == "B" %} aria-pressed="true" class="current"{% endif %}>B 磕绊/看了提示</button>
-          <button type="submit" name="mark" value="C" title="没做出来/抄题解：安排 4 轮复习（D+1、D+3、D+7、D+14）"{% if item.is_done and item.attempt.mark.value == "C" %} aria-pressed="true" class="current"{% endif %}>C 没做出来/抄题解</button>
+        <div class="outcome-buttons">
+          <button type="submit" name="outcome" value="within_solid" title="不排复习"{% if current_outcome and current_outcome.value == "within_solid" %} aria-pressed="true" class="current"{% endif %}>
+            限时内做出来，思路清楚
+          </button>
+          <button type="submit" name="outcome" value="within_shaky" title="复习 2 轮（D+3、D+14）"{% if current_outcome and current_outcome.value == "within_shaky" %} aria-pressed="true" class="current"{% endif %}>
+            限时内，但靠硬套模板/蒙的
+          </button>
+          <button type="submit" name="outcome" value="over" title="复习 2 轮（D+3、D+14）"{% if current_outcome and current_outcome.value == "over" %} aria-pressed="true" class="current"{% endif %}>
+            超时才做出来
+          </button>
+          <button type="submit" name="outcome" value="unsolved" title="复习 4 轮（D+1、D+3、D+7、D+14）"{% if current_outcome and current_outcome.value == "unsolved" %} aria-pressed="true" class="current"{% endif %}>
+            没做出来 / 看了题解
+          </button>
         </div>
-        <p class="muted mark-hint">点标记即保存。A 不安排复习，B 安排 2 轮（D+3、D+14），C 安排 4 轮（D+1、D+3、D+7、D+14）。</p>
+        <p class="muted outcome-hint">点一下即保存。限时内做出来，思路清楚：不排复习。限时内但靠硬套模板/蒙的，或超时才做出来：安排 2 轮复习（D+3、D+14）。没做出来/看了题解：安排 4 轮复习（D+1、D+3、D+7、D+14）。</p>
       </div>
     </fieldset>
   </form>

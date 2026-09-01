@@ -16,8 +16,9 @@ from sqlalchemy import Engine
 from sqlmodel import Session
 
 from leetcode_helper.db import get_engine
-from leetcode_helper.models import DurationBucket
+from leetcode_helper.models import Attempt, DurationBucket
 from leetcode_helper.repositories.today import NoActiveTopic, get_problem_item, list_template_options
+from leetcode_helper.services.attempts import Outcome, outcome_of
 from leetcode_helper.web.routes import history as history_routes
 from leetcode_helper.web.routes import today as today_routes
 
@@ -41,6 +42,20 @@ BUCKET_LABELS: dict[DurationBucket, str] = {
 }
 assert set(BUCKET_LABELS) == set(DurationBucket), "BUCKET_LABELS 未覆盖所有 DurationBucket 枚举值"
 
+# Chinese display labels for the merged 用时/掌握程度 outcome control. Used
+# only for the done-row "已录入：..." summary line -- the four submit
+# buttons in the template carry their own literal Chinese text plus a
+# `title` tooltip, not this dict, since Jinja filters over an enum whose
+# `.value` differs from its label would be more indirection than the
+# template needs there.
+OUTCOME_LABELS: dict[Outcome, str] = {
+    Outcome.within_solid: "限时内做出来，思路清楚",
+    Outcome.within_shaky: "限时内，但靠硬套模板/蒙的",
+    Outcome.over: "超时才做出来",
+    Outcome.unsolved: "没做出来 / 看了题解",
+}
+assert set(OUTCOME_LABELS) == set(Outcome), "OUTCOME_LABELS 未覆盖所有 Outcome 枚举值"
+
 
 def format_limit(seconds: int) -> str:
     return f"{seconds // 60:02d}:{seconds % 60:02d}"
@@ -48,6 +63,17 @@ def format_limit(seconds: int) -> str:
 
 def format_bucket(bucket: DurationBucket) -> str:
     return BUCKET_LABELS[bucket]
+
+
+def format_outcome(outcome: Outcome) -> str:
+    return OUTCOME_LABELS[outcome]
+
+
+def attempt_outcome(attempt: Attempt) -> Outcome | None:
+    """Template-side wrapper so `{{ item.attempt | outcome_of }}` reads the
+    same as the other filters here, rather than importing the service
+    function directly into every template."""
+    return outcome_of(attempt)
 
 
 def create_app(
@@ -62,6 +88,8 @@ def create_app(
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["limit"] = format_limit
     templates.env.filters["bucket_label"] = format_bucket
+    templates.env.filters["outcome_label"] = format_outcome
+    templates.env.filters["outcome_of"] = attempt_outcome
     app.state.templates = templates
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -92,7 +120,7 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def form_validation_error(request: Request, exc: RequestValidationError) -> HTMLResponse:
-        # A bogus enum value (e.g. mark="Z") or a missing/non-numeric
+        # A bogus enum value (e.g. outcome="Z") or a missing/non-numeric
         # problem_id fails FastAPI/Pydantic's own Form(...) coercion *before*
         # the route body runs -- routes/today.py's own try/except around
         # record_attempt never sees it. Left to FastAPI's default, this would

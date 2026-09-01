@@ -126,11 +126,11 @@ def test_history_shows_one_row_per_corrected_attempt_not_two(engine):
 
     client.post(
         "/attempts",
-        data={"problem_id": str(problem_id), "duration_bucket": "over", "mark": "B", "submit_count": "1"},
+        data={"problem_id": str(problem_id), "outcome": "over", "submit_count": "1"},
     )
     client.post(
         "/attempts",
-        data={"problem_id": str(problem_id), "duration_bucket": "within", "mark": "A", "submit_count": "1"},
+        data={"problem_id": str(problem_id), "outcome": "within_solid", "submit_count": "1"},
     )
 
     body = client.get("/history").text

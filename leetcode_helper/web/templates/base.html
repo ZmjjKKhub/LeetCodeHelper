@@ -22,7 +22,7 @@
     button[aria-pressed="true"].current { outline: 2px solid var(--pico-primary); }
 
     /* Two-column label/control layout for the entry panel -- every control
-       (用时/模板/提交次数/掌握程度) gets a visible label to its left. Falls
+       (模板/提交次数/今天做得怎么样) gets a visible label to its left. Falls
        back to a stacked single column on a narrow window instead of letting
        the control row overflow. */
     .field-row { border: none; margin: 0 0 .75rem 0; padding: 0; display: grid; grid-template-columns: 9rem 1fr; gap: .5rem 1rem; align-items: start; }
@@ -30,8 +30,8 @@
     .field-row .field-control { grid-column: 2; }
     .field-control.inline { display: flex; gap: 1rem; flex-wrap: wrap; }
     .field-control.inline label { margin: 0; }
-    .mark-buttons { display: flex; gap: .5rem; flex-wrap: wrap; }
-    .mark-hint { margin: .35rem 0 0 0; }
+    .outcome-buttons { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .outcome-hint { margin: .35rem 0 0 0; }
     @media (max-width: 40rem) {
       .field-row { grid-template-columns: 1fr; }
       .field-row legend { grid-column: 1; }

@@ -9,8 +9,7 @@ def test_post_attempt_persists_and_returns_updated_row(client, engine):
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "over",
-            "mark": "C",
+            "outcome": "unsolved",
             "submit_count": "3",
             "used_template": "C",
         },
@@ -27,7 +26,7 @@ def test_post_attempt_persists_and_returns_updated_row(client, engine):
     with Session(engine) as session:
         attempt = session.exec(select(Attempt)).one()
         assert attempt.mark is Mark.C
-        assert attempt.duration_bucket is DurationBucket.over
+        assert attempt.duration_bucket is DurationBucket.unsolved
         assert attempt.submit_count == 3
         assert attempt.time_limit_sec == 1200
         assert attempt.used_template == "C"
@@ -38,8 +37,7 @@ def test_post_attempt_treats_empty_template_as_none(client, engine):
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
             "used_template": "",
         },
@@ -53,8 +51,7 @@ def test_post_attempt_rejects_bad_submit_count(client):
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "0",
         },
     )
@@ -71,8 +68,7 @@ def test_post_attempt_rejects_bad_submit_count_returns_html_not_json(client, eng
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "0",
         },
     )
@@ -97,27 +93,26 @@ def test_post_attempt_validation_error_row_is_reusable(client):
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "0",
         },
     )
     assert response.status_code == 422
     assert "<form" in response.text
-    assert 'name="mark" value="A"' in response.text
-    assert 'name="duration_bucket"' in response.text
+    assert 'name="outcome" value="within_solid"' in response.text
+    assert 'name="outcome" value="unsolved"' in response.text
 
 
 def test_post_attempt_bad_enum_value_is_html_422(client):
-    # mark="Z" fails FastAPI/Pydantic's own enum coercion *before* the route
-    # body ever runs -- this bypasses our try/except entirely and is handled
-    # by app_factory's RequestValidationError handler instead.
+    # outcome="not_a_real_option" fails FastAPI/Pydantic's own enum coercion
+    # *before* the route body ever runs -- this bypasses our try/except
+    # entirely and is handled by app_factory's RequestValidationError handler
+    # instead.
     response = client.post(
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "within",
-            "mark": "Z",
+            "outcome": "not_a_real_option",
             "submit_count": "1",
         },
     )
@@ -136,8 +131,7 @@ def test_post_attempt_unknown_problem_id_is_404_html(client):
         "/attempts",
         data={
             "problem_id": "999",
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
         },
     )
@@ -150,8 +144,7 @@ def test_post_attempt_missing_problem_id_is_422_html_not_json(client):
     response = client.post(
         "/attempts",
         data={
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
         },
     )
@@ -170,8 +163,7 @@ def test_post_attempt_non_numeric_problem_id_does_not_inject_html(client):
         "/attempts",
         data={
             "problem_id": payload,
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
         },
     )
@@ -188,8 +180,7 @@ def test_post_attempt_missing_duration_sec_field_is_fine(client):
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
         },
     )
@@ -207,8 +198,7 @@ def test_post_attempt_corrupt_topic_config_is_422_not_500(engine):
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
         },
     )
@@ -230,8 +220,7 @@ def test_double_submission_same_day_corrects_in_place_no_second_row(client, engi
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "over",
-            "mark": "C",
+            "outcome": "unsolved",
             "submit_count": "2",
         },
     )
@@ -239,8 +228,7 @@ def test_double_submission_same_day_corrects_in_place_no_second_row(client, engi
         "/attempts",
         data={
             "problem_id": "1",
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
         },
     )
@@ -248,15 +236,14 @@ def test_double_submission_same_day_corrects_in_place_no_second_row(client, engi
     assert first.status_code == 200
     assert second.status_code == 200
     # The re-rendered row after the second submission must reflect the
-    # *corrected* attempt (mark=A, bucket=within), matching what
+    # *corrected* attempt (within_solid), matching what
     # repositories/today.py's "latest wins" rule would show on a fresh
-    # GET /today -- not the original mark=C/over. The bucket renders through
-    # the `bucket_label` filter (Chinese), not the raw enum value -- "within"
-    # itself must never leak into the page.
-    assert "A / 限时内" in second.text
-    assert "C / 超时" not in second.text
-    assert "已录入：A / within" not in second.text
-    assert "已录入：C / over" not in second.text
+    # GET /today -- not the original unsolved state.
+    assert "已录入：限时内做出来，思路清楚" in second.text
+    assert "已录入：没做出来 / 看了题解" not in second.text
+    unsolved_start = second.text.index('name="outcome" value="unsolved"')
+    unsolved_end = second.text.index("</button>", unsolved_start)
+    assert 'aria-pressed="true"' not in second.text[unsolved_start:unsolved_end]
 
     with Session(engine) as session:
         attempts = session.exec(select(Attempt).order_by(Attempt.id)).all()
@@ -274,7 +261,7 @@ def test_get_today_after_post_is_consistent_with_fallback_filtering(client):
     # correctable instead of vanishing on reload.
     post_response = client.post(
         "/attempts",
-        data={"problem_id": "1", "duration_bucket": "within", "mark": "A", "submit_count": "1"},
+        data={"problem_id": "1", "outcome": "within_solid", "submit_count": "1"},
     )
     assert post_response.status_code == 200
     assert "已录入" in post_response.text
@@ -283,5 +270,3 @@ def test_get_today_after_post_is_consistent_with_fallback_filtering(client):
     assert "没有待做的题了" not in body
     assert "已录入" in body
     assert "长度最小的子数组" in body
-
-

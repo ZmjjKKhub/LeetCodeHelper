@@ -128,11 +128,11 @@ def test_done_item_form_is_prefilled_with_recorded_values(engine):
 
     body = make_client(engine).get("/today").text
 
-    # The recorded duration_bucket radio is checked.
-    assert 'value="over" ' in body and "checked" in body
-    over_start = body.index('value="over"')
-    over_end = body.index("</label>", over_start)
-    assert "checked" in body[over_start:over_end]
+    # duration_bucket=over/mark=B is the "over" outcome -- its button is
+    # marked as currently selected.
+    over_start = body.index('name="outcome" value="over"')
+    over_end = body.index("</button>", over_start)
+    assert 'aria-pressed="true"' in body[over_start:over_end]
 
     # The recorded used_template ("A") is selected in the <select>.
     select_start = body.index("<select")
@@ -141,10 +141,11 @@ def test_done_item_form_is_prefilled_with_recorded_values(engine):
     idx_a = select_html.index('value="A"')
     assert "selected" in select_html[idx_a : idx_a + 40]
 
-    # The recorded mark (B) is indicated as currently selected.
-    b_start = body.index('name="mark" value="B"')
-    b_end = body.index("</button>", b_start)
-    assert 'aria-pressed="true"' in body[b_start:b_end]
+    # No *other* outcome button is marked current.
+    for other in ("within_solid", "within_shaky", "unsolved"):
+        other_start = body.index(f'name="outcome" value="{other}"')
+        other_end = body.index("</button>", other_start)
+        assert 'aria-pressed="true"' not in body[other_start:other_end]
 
     # The recorded submit_count (4) seeds the Alpine `count` state.
     assert "count: 4" in body
@@ -171,24 +172,22 @@ def test_pending_item_form_defaults_template_and_hx_target(engine):
     assert "selected" in snippet
 
 
-def test_mark_buttons_submit_directly_no_separate_save_button(engine):
+def test_outcome_buttons_submit_directly_no_separate_save_button(engine):
     # The product hypothesis this whole phase exists to test is <=20s and
-    # <=3 clicks: 录入(open) -> 用时(duration) -> 标记(mark). That only works
-    # if clicking a mark button *is* the submit action -- collapsing 标记
-    # and 保存 into one click -- rather than a fourth separate "保存" button.
+    # <=2 clicks: 录入(open) -> 今天做得怎么样(outcome). That only works if
+    # clicking an outcome button *is* the submit action -- collapsing the
+    # choice and 保存 into one click -- rather than a separate "保存" button.
     seed(engine, with_plan=True)
     body = make_client(engine).get("/today").text
 
-    assert '<button type="submit" name="mark" value="A"' in body
-    assert '<button type="submit" name="mark" value="B"' in body
-    assert '<button type="submit" name="mark" value="C"' in body
-    # "保存" now legitimately appears as prose ("点标记即保存") explaining
-    # that a mark click *is* the save -- but there must be no standalone
+    assert '<button type="submit" name="outcome" value="within_solid"' in body
+    assert '<button type="submit" name="outcome" value="within_shaky"' in body
+    assert '<button type="submit" name="outcome" value="over"' in body
+    assert '<button type="submit" name="outcome" value="unsolved"' in body
+    # "保存" now legitimately appears as prose ("点一下即保存") explaining
+    # that an outcome click *is* the save -- but there must be no standalone
     # <button>保存</button>-style separate save control.
     assert ">保存<" not in body
-    # duration_bucket must still be required client-side so an incomplete
-    # submission is caught by the browser instead of round-tripping.
-    assert 'name="duration_bucket" value="within" required' in body
 
 
 def test_form_has_disabled_elt_for_double_submit_guard(engine):
@@ -199,21 +198,24 @@ def test_form_has_disabled_elt_for_double_submit_guard(engine):
     assert 'hx-disabled-elt="find button"' in body
 
 
-def test_submit_count_field_comes_before_mark_buttons(engine):
-    # C2: submit_count must be visible and reachable *before* the mark
-    # buttons, since clicking a mark button submits the form -- the
-    # interaction is over the moment that happens. It's rendered as a
-    # stepper immediately to the left of the mark buttons.
+def test_submit_count_and_template_come_before_outcome_buttons(engine):
+    # C2: submit_count and used_template must be visible and reachable
+    # *before* the outcome buttons, since clicking an outcome button submits
+    # the form -- the interaction is over the moment that happens. They are
+    # rendered earlier in DOM order, on purpose, so both tab order and
+    # "clickable before submit" hold with no CSS reordering involved.
     seed(engine, with_plan=True)
     body = make_client(engine).get("/today").text
     submit_count_index = body.index('name="submit_count"')
-    mark_button_index = body.index('name="mark" value="A"')
-    assert submit_count_index < mark_button_index
+    template_select_index = body.index('name="used_template"')
+    outcome_button_index = body.index('name="outcome" value="within_solid"')
+    assert submit_count_index < outcome_button_index
+    assert template_select_index < outcome_button_index
 
 
 def test_stepper_buttons_are_type_button_not_submit(engine):
     # The [-]/[+] steppers must never submit the form themselves -- only the
-    # mark buttons (type="submit") do.
+    # outcome buttons (type="submit") do.
     seed(engine, with_plan=True)
     body = make_client(engine).get("/today").text
     stepper_start = body.index('class="stepper"')
@@ -222,9 +224,10 @@ def test_stepper_buttons_are_type_button_not_submit(engine):
     assert stepper_html.count('type="button"') == 2
     assert 'type="submit"' not in stepper_html
 
-    assert '<button type="submit" name="mark" value="A"' in body
-    assert '<button type="submit" name="mark" value="B"' in body
-    assert '<button type="submit" name="mark" value="C"' in body
+    assert '<button type="submit" name="outcome" value="within_solid"' in body
+    assert '<button type="submit" name="outcome" value="within_shaky"' in body
+    assert '<button type="submit" name="outcome" value="over"' in body
+    assert '<button type="submit" name="outcome" value="unsolved"' in body
 
 
 def test_submit_count_defaults_to_one_and_min_is_one(engine):
@@ -327,19 +330,19 @@ def test_entry_panel_controls_have_visible_labels(engine):
     # The panel used to be four unlabeled controls (a bare radio group, a
     # dropdown of bare template codes, a "[-] 1 [+]" stepper, and bare A/B/C
     # buttons) -- every one of them now needs a visible label/legend saying
-    # what it is.
+    # what it is. The 用时/掌握程度 pair has since been merged into one
+    # 今天做得怎么样 control (see split_outcome in services/attempts.py).
     topic_id, problem_id = seed(engine, with_plan=True)
     with Session(engine) as session:
         session.add(Template(topic_id=topic_id, code="A", name="定长滑窗", trigger_signal="窗口长度固定"))
         session.commit()
 
     body = make_client(engine).get("/today").text
-    assert "用时（限时 20:00）" in body
     assert "用了哪个模板" in body
     assert "提交次数" in body
-    assert "掌握程度（决定复习安排）" in body
-    # The A/B/C consequence line making the commit explicit.
-    assert "点标记即保存" in body
+    assert "今天做得怎么样？（点一下即保存）" in body
+    # The consequence line making the commit explicit.
+    assert "点一下即保存" in body
 
 
 def test_template_dropdown_shows_code_name_and_trigger_signal_title(engine):
@@ -369,8 +372,7 @@ def test_template_dropdown_shows_code_name_and_trigger_signal_title(engine):
         "/attempts",
         data={
             "problem_id": problem_id,
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
             "used_template": "A",
         },
@@ -383,11 +385,10 @@ def test_template_dropdown_shows_code_name_and_trigger_signal_title(engine):
     assert 'title="窗口长度固定"' in get_body
 
 
-def test_done_row_summary_uses_chinese_bucket_label_not_raw_enum(engine):
-    # Minor bug called out alongside the label fixes: a done row used to
-    # show "已录入：A / within" -- the raw DurationBucket enum value leaking
-    # into user-facing text instead of the existing `bucket_label` filter's
-    # Chinese label.
+def test_done_row_summary_uses_outcome_label(engine):
+    # The done-row summary now reads the merged outcome's own Chinese label
+    # ("已录入：限时内做出来，思路清楚") rather than the old raw "A / 限时内"
+    # mark+bucket rendering.
     topic_id, problem_id = seed(engine, with_plan=True)
     with Session(engine) as session:
         session.add(
@@ -404,8 +405,44 @@ def test_done_row_summary_uses_chinese_bucket_label_not_raw_enum(engine):
         session.commit()
 
     body = make_client(engine).get("/today").text
-    assert "已录入：A / 限时内" in body
+    assert "已录入：限时内做出来，思路清楚" in body
     assert "已录入：A / within" not in body
+    assert "已录入：A / 限时内" not in body
+
+
+def test_done_row_with_unreachable_combo_renders_without_crashing_and_marks_none_current(engine):
+    # (within, C) -- 限时内做出来 but marked C -- cannot be produced by the
+    # new four-option UI (within only ever pairs with A or B here), but an
+    # older row or a direct write can still have it. outcome_of must return
+    # None for it, the template must fall back to the old raw mark/bucket
+    # summary instead of guessing, and no outcome button may render as
+    # current.
+    topic_id, problem_id = seed(engine, with_plan=True)
+    with Session(engine) as session:
+        session.add(
+            Attempt(
+                problem_id=problem_id,
+                attempt_date=date(2026, 9, 1),
+                kind=AttemptKind.new,
+                duration_bucket=DurationBucket.within,
+                time_limit_sec=1200,
+                submit_count=1,
+                mark=Mark.C,
+            )
+        )
+        session.commit()
+
+    response = make_client(engine).get("/today")
+    assert response.status_code == 200
+    body = response.text
+    # Falls back to the raw mark + Chinese bucket-label rendering.
+    assert "已录入：C / 限时内" in body
+
+    for value in ("within_solid", "within_shaky", "over", "unsolved"):
+        start = body.index(f'name="outcome" value="{value}"')
+        end = body.index("</button>", start)
+        assert 'aria-pressed="true"' not in body[start:end]
+        assert 'class="current"' not in body[start:end]
 
 
 def test_attempts_response_renders_labelled_panel_with_real_templates(engine):
@@ -422,8 +459,7 @@ def test_attempts_response_renders_labelled_panel_with_real_templates(engine):
         "/attempts",
         data={
             "problem_id": problem_id,
-            "duration_bucket": "within",
-            "mark": "A",
+            "outcome": "within_solid",
             "submit_count": "1",
             "used_template": "B",
         },
