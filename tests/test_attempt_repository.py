@@ -1,7 +1,7 @@
 from datetime import date
 
 import pytest
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import select
 
 from leetcode_helper.models import (
     Attempt,
@@ -18,19 +18,7 @@ from leetcode_helper.models import (
 )
 from leetcode_helper.repositories.attempts import ProblemNotFound, list_history, record_attempt
 from leetcode_helper.services.attempts import AttemptInput
-
-CONFIG_JSON = (
-    '{"code": "sliding-window", "name": "sw", '
-    '"time_limits": {"easy": 480, "medium": 1200, "hard": 2100}, "card_fields": []}'
-)
-
-
-@pytest.fixture
-def session():
-    engine = create_engine("sqlite://")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as s:
-        yield s
+from tests.conftest import CONFIG_JSON
 
 
 @pytest.fixture

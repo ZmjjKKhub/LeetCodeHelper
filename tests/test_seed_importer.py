@@ -25,14 +25,6 @@ from leetcode_helper.seed.importer import import_bundle
 from leetcode_helper.services.topics import parse_topic_config
 
 
-@pytest.fixture
-def session():
-    engine = create_engine("sqlite://")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as s:
-        yield s
-
-
 def make_bundle(*, problems, days, plan_start=date(2026, 9, 1), plan_name="滑动窗口计划") -> SeedBundle:
     config = parse_topic_config(
         {

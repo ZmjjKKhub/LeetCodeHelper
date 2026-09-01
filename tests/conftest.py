@@ -25,6 +25,20 @@ CONFIG_JSON = (
     '"time_limits": {"easy": 480, "medium": 1200, "hard": 2100}, "card_fields": []}'
 )
 
+
+@pytest.fixture
+def session():
+    # Plain (non-StaticPool) in-memory engine for repository/model/importer
+    # tests, which never cross threads the way the web `engine` fixture
+    # above does. Was copy-pasted identically into test_attempt_repository,
+    # test_models, test_seed_importer and test_today_repository -- hoisted
+    # here so there is exactly one place to get it right.
+    engine = create_engine("sqlite://")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        yield s
+
+
 # A config missing the "hard" time limit -- parse_topic_config_json requires
 # all three Difficulty values to be present, so this fails to parse no
 # matter which difficulty the problem being attempted actually is.

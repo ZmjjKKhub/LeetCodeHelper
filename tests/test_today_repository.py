@@ -1,7 +1,6 @@
 from datetime import date
 
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
 
 from leetcode_helper.models import (
     Attempt,
@@ -23,14 +22,6 @@ from leetcode_helper.repositories.today import (
     get_today_view,
     list_template_codes,
 )
-
-
-@pytest.fixture
-def session():
-    engine = create_engine("sqlite://")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as s:
-        yield s
 
 
 @pytest.fixture

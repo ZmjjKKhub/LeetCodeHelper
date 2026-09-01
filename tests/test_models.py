@@ -2,7 +2,6 @@ from datetime import date
 
 import pytest
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, SQLModel, create_engine
 
 from leetcode_helper.models import (
     Attempt,
@@ -13,14 +12,6 @@ from leetcode_helper.models import (
     Problem,
     Topic,
 )
-
-
-@pytest.fixture
-def session():
-    engine = create_engine("sqlite://")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as s:
-        yield s
 
 
 def _topic(session) -> Topic:
