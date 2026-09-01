@@ -10,6 +10,7 @@ from typing import Callable
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine
 from sqlmodel import Session
@@ -21,6 +22,7 @@ from leetcode_helper.web.routes import history as history_routes
 from leetcode_helper.web.routes import today as today_routes
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # Chinese display labels for DurationBucket. Kept here (next to format_limit,
 # the other display-formatting helper) rather than in a route module: a
@@ -61,6 +63,8 @@ def create_app(
     templates.env.filters["limit"] = format_limit
     templates.env.filters["bucket_label"] = format_bucket
     app.state.templates = templates
+
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.get("/", include_in_schema=False)
     def root() -> RedirectResponse:
