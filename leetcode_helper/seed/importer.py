@@ -34,6 +34,7 @@ from leetcode_helper.models import (
     Problem,
     Template,
     Topic,
+    _now,
 )
 from leetcode_helper.seed.bundle import SeedBundle
 
@@ -103,11 +104,25 @@ def import_bundle(session: Session, bundle: SeedBundle) -> ImportReport:
             )
             report.templates_created += 1
         else:
+            # updated_at should reflect the last time this template's
+            # content actually changed, not the last time seed was run --
+            # Phase 3's template version timeline reads it. Only bump it
+            # when a field-owned-by-the-seed genuinely differs; an
+            # unchanged re-import must leave it alone.
+            changed = (
+                existing.name != seed_template.name
+                or existing.language != seed_template.language
+                or existing.content != seed_template.content
+                or existing.pitfalls != seed_template.pitfalls
+                or existing.trigger_signal != seed_template.trigger_signal
+            )
             existing.name = seed_template.name
             existing.language = seed_template.language
             existing.content = seed_template.content
             existing.pitfalls = seed_template.pitfalls
             existing.trigger_signal = seed_template.trigger_signal
+            if changed:
+                existing.updated_at = _now()
             report.templates_updated += 1
     session.flush()
 

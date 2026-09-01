@@ -355,6 +355,63 @@ def test_template_content_updates_in_place(session):
     assert tpl.content == "while new"
 
 
+def test_template_updated_at_bumps_when_content_changes(session):
+    first = make_bundle(
+        problems=(problem(209),),
+        days=(SeedPlanDay(day_index=1, phase="", theme="", problem_lc_ids=(209,)),),
+    )
+    import_bundle(session, first)
+    original_updated_at = session.exec(select(Template)).one().updated_at
+
+    config = parse_topic_config(
+        {
+            "code": "sliding-window",
+            "name": "滑动窗口",
+            "time_limits": {"easy": 480, "medium": 1200, "hard": 2100},
+            "card_fields": [],
+        }
+    )
+    second = SeedBundle(
+        config=config,
+        problems=(problem(209),),
+        templates=(
+            SeedTemplate(
+                code="C",
+                name="不定长·求最短",
+                language="python",
+                content="while new content",
+                pitfalls="",
+                trigger_signal="",
+            ),
+        ),
+        plan=SeedPlan(
+            name="滑动窗口计划",
+            start_date=date(2026, 9, 1),
+            days=(SeedPlanDay(day_index=1, phase="", theme="", problem_lc_ids=(209,)),),
+        ),
+    )
+    import_bundle(session, second)
+
+    tpl = session.exec(select(Template)).one()
+    assert tpl.content == "while new content"
+    assert tpl.updated_at > original_updated_at
+
+
+def test_template_updated_at_does_not_bump_on_unchanged_reimport(session):
+    bundle = make_bundle(
+        problems=(problem(209),),
+        days=(SeedPlanDay(day_index=1, phase="", theme="", problem_lc_ids=(209,)),),
+    )
+    import_bundle(session, bundle)
+    original_updated_at = session.exec(select(Template)).one().updated_at
+
+    # Re-import the exact same bundle unchanged.
+    import_bundle(session, bundle)
+
+    tpl = session.exec(select(Template)).one()
+    assert tpl.updated_at == original_updated_at
+
+
 def test_import_is_atomic_on_error(session):
     """If a mid-import error occurs (e.g. a bad problem/plan reference the
     importer trusts but turns out inconsistent), nothing should be committed."""
