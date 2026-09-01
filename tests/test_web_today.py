@@ -183,6 +183,11 @@ def test_plan_day_with_zero_items_is_empty_state(engine):
 
     body = make_client(engine).get("/today").text
     assert "没有待做的题了" in body
+    # This plan day genuinely has no problems scheduled -- distinct from
+    # "nothing left to practice at all" (the fallback case below), which
+    # points the user at re-importing instead.
+    assert "今天的排期没有安排题目" in body
+    assert "uv run python -m leetcode_helper.seed" not in body
 
 
 def test_fallback_with_all_attempted_is_empty_state(engine):
@@ -203,6 +208,10 @@ def test_fallback_with_all_attempted_is_empty_state(engine):
 
     body = make_client(engine).get("/today").text
     assert "没有待做的题了" in body
+    # The fallback empty state means nothing is left to practice at all --
+    # give the user the exact command to re-import after adding more
+    # problems, instead of a dead end.
+    assert "uv run python -m leetcode_helper.seed data/topics/sliding-window" in body
 
 
 def test_problem_link_opens_in_new_tab(engine):
