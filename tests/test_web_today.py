@@ -477,6 +477,113 @@ def test_attempts_response_renders_labelled_panel_with_real_templates(engine):
     assert "selected" in select_html[idx_b : idx_b + 60]
 
 
+def test_template_shown_as_readout_text_with_hidden_select_behind_correction_toggle(engine):
+    # The complaint this change exists to fix: the panel must not present the
+    # template as a decision the user has to make. The system already judges
+    # it (Problem.default_template, now derived from the 题单 section) --
+    # this renders that judgment as text, with 改 revealing the underlying
+    # <select> (still there, still `used_template`, same options) only on
+    # demand.
+    topic_id, problem_id = seed(engine, with_plan=True, default_template="A")
+    with Session(engine) as session:
+        session.add(
+            Template(
+                topic_id=topic_id,
+                code="A",
+                name="定长滑窗（入 → 更新 → 出）",
+                trigger_signal="窗口长度固定",
+            )
+        )
+        session.commit()
+
+    body = make_client(engine).get("/today").text
+    readout_start = body.index('class="template-readout"')
+    readout_end = body.index("</p>", readout_start)
+    readout_html = body[readout_start:readout_end]
+
+    # The judged template renders as text, not a forced choice.
+    assert "A · 定长滑窗（入 → 更新 → 出）" in readout_html
+    assert "改" in readout_html
+    assert 'x-show="!editTemplate"' in body
+
+    # The <select> is still present in the DOM (so 改 can reveal it and the
+    # correction path keeps working), but it is gated behind the same
+    # row-local Alpine state as the readout -- hidden until 改 is clicked.
+    select_start = body.index("<select", readout_end)
+    select_tag_end = body.index(">", select_start)
+    select_tag = body[select_start:select_tag_end]
+    assert 'name="used_template"' in select_tag
+    assert 'x-show="editTemplate"' in select_tag
+
+
+def test_done_row_shows_recorded_template_not_derived_default(engine):
+    # C1/R6: a corrected row must show what was actually recorded, not the
+    # derived default -- and since they differ here, the gap itself (the
+    # signal R6 exists to capture) must be visible too.
+    topic_id, problem_id = seed(engine, with_plan=True, default_template="C")
+    with Session(engine) as session:
+        session.add(Template(topic_id=topic_id, code="A", name="定长滑窗", trigger_signal="窗口固定"))
+        session.add(Template(topic_id=topic_id, code="C", name="不定长·求最短", trigger_signal="求最短"))
+        session.add(
+            Attempt(
+                problem_id=problem_id,
+                attempt_date=date(2026, 9, 1),
+                kind=AttemptKind.new,
+                duration_bucket=DurationBucket.within,
+                time_limit_sec=1200,
+                submit_count=1,
+                mark=Mark.A,
+                used_template="A",
+            )
+        )
+        session.commit()
+
+    body = make_client(engine).get("/today").text
+    readout_start = body.index('class="template-readout"')
+    readout_end = body.index("</p>", readout_start)
+    readout_html = body[readout_start:readout_end]
+
+    # Recorded ("A"), not derived ("C"), is the headline.
+    assert "A · 定长滑窗" in readout_html
+    # But the derived expectation the user diverged from is visible too.
+    assert "原本预期 C" in readout_html
+
+
+def test_row_with_no_derived_template_reads_wu_and_stays_correctable(engine):
+    topic_id, problem_id = seed(engine, with_plan=True, default_template=None)
+    body = make_client(engine).get("/today").text
+    readout_start = body.index('class="template-readout"')
+    readout_end = body.index("</p>", readout_start)
+    readout_html = body[readout_start:readout_end]
+    assert "无" in readout_html
+    assert "改" in readout_html
+
+
+def test_matching_recorded_template_shows_no_mismatch_note(engine):
+    topic_id, problem_id = seed(engine, with_plan=True, default_template="A")
+    with Session(engine) as session:
+        session.add(Template(topic_id=topic_id, code="A", name="定长滑窗", trigger_signal="窗口固定"))
+        session.add(
+            Attempt(
+                problem_id=problem_id,
+                attempt_date=date(2026, 9, 1),
+                kind=AttemptKind.new,
+                duration_bucket=DurationBucket.within,
+                time_limit_sec=1200,
+                submit_count=1,
+                mark=Mark.A,
+                used_template="A",
+            )
+        )
+        session.commit()
+
+    body = make_client(engine).get("/today").text
+    readout_start = body.index('class="template-readout"')
+    readout_end = body.index("</p>", readout_start)
+    readout_html = body[readout_start:readout_end]
+    assert "原本预期" not in readout_html
+
+
 def test_unrelated_keyerror_is_500_not_disguised_as_no_active_topic(engine, monkeypatch):
     # C1: the old handler was registered on the bare LookupError, which is
     # also the base class of KeyError and IndexError. An internal bug (e.g.

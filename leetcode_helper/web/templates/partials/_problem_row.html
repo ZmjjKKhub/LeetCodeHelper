@@ -9,7 +9,21 @@
    guessing. #}
 {% set current_outcome = (item.attempt | outcome_of) if item.is_done else None %}
 <article class="problem-row {% if item.is_done %}done{% endif %}" id="problem-{{ item.problem.id }}"
-         x-data="{ open: {{ 'true' if error else 'false' }}, count: {{ item.attempt.submit_count if item.is_done else 1 }} }">
+         x-data="{ open: {{ 'true' if error else 'false' }}, count: {{ item.attempt.submit_count if item.is_done else 1 }}, editTemplate: false }">
+  {# The template is *judged*, not picked -- derived from the 题单 section at
+     import time (services/topics.py::resolve_section_template) into
+     Problem.default_template. A pending row's "current" template is that
+     derivation; a done row's is whatever was actually recorded on the
+     attempt, which may have been corrected away from the derived value
+     (规格 §5 R6 cares about exactly that gap). Either way it's shown as
+     text, not a control the user has to operate on every entry -- the
+     underlying <select> (still `used_template`, same options, same "无")
+     stays in the DOM for the rare correction, revealed only by clicking 改
+     via the row's own x-data (editTemplate below). #}
+  {% set derived_code = item.problem.default_template %}
+  {% set current_code = item.attempt.used_template if item.is_done else derived_code %}
+  {% set current_option = (template_options | selectattr('code', 'equalto', current_code) | list | first) if current_code else None %}
+  {% set template_mismatch = item.is_done and derived_code and derived_code != current_code %}
   <div class="row-head">
     <a href="{{ item.problem.url }}" target="_blank" rel="noopener">
       {{ item.problem.lc_id }}. {{ item.problem.title }}
@@ -46,17 +60,23 @@
         hx-disabled-elt="find button">
     <input type="hidden" name="problem_id" value="{{ item.problem.id }}">
 
+    {# The system already judges the template (derived from the 题单 section,
+       see the comment above current_code/derived_code at the top of this
+       file) -- the user shouldn't have to pick it on every entry. So the
+       common case is text, not a control: x-show="!editTemplate" below. The
+       <select> (same field name, same options, same "无") stays in the DOM
+       for the rare correction and is revealed by clicking 改. #}
     <fieldset class="field-row">
       <legend>用了哪个模板</legend>
       <div class="field-control">
-        <select name="used_template">
+        <p class="template-readout" x-show="!editTemplate">
+          {% if current_option %}{{ current_option.code }} · {{ current_option.name }}{% else %}无{% endif %}{% if template_mismatch %} （原本预期 {{ derived_code }}）{% endif %}
+          <a href="#" @click.prevent="editTemplate = true" role="button" class="secondary outline">改</a>
+        </p>
+        <select name="used_template" x-show="editTemplate" x-cloak>
           <option value="">无</option>
           {% for tmpl in template_options %}
-            {% if item.is_done %}
-              <option value="{{ tmpl.code }}" title="{{ tmpl.trigger_signal }}" {% if tmpl.code == item.attempt.used_template %}selected{% endif %}>{{ tmpl.code }} · {{ tmpl.name }}</option>
-            {% else %}
-              <option value="{{ tmpl.code }}" title="{{ tmpl.trigger_signal }}" {% if tmpl.code == item.problem.default_template %}selected{% endif %}>{{ tmpl.code }} · {{ tmpl.name }}</option>
-            {% endif %}
+            <option value="{{ tmpl.code }}" title="{{ tmpl.trigger_signal }}" {% if tmpl.code == current_code %}selected{% endif %}>{{ tmpl.code }} · {{ tmpl.name }}</option>
           {% endfor %}
         </select>
       </div>
