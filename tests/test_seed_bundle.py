@@ -260,3 +260,32 @@ def test_shipped_sliding_window_bundle_is_valid():
         assert problem.title
         assert problem.url
         assert problem.section
+
+
+def test_shipped_sliding_window_sections_match_the_source_list():
+    """小节划分必须与灵神题单原文一致。
+
+    https://leetcode.cn/discuss/post/3578981/ 的「一、定长滑动窗口」下：
+      §1.1 基础        1456, 643, 1343, 2090, 2379, 2841, 2461, 1423
+      §1.2 进阶（选做） 1052, 2134, 567, 438, 30, 1888（其下「思维扩展」含 2653）
+
+    这条断言存在的原因：section 决定 P7 热力图的分组和 R5「某 section 的 C 类题
+    占比 > 50%」规则，而它无法从 LeetCode 官方接口取得——只能照抄题单。1052 曾
+    被错放进 §1.1，正是这类错误没有断言看着才会发生。
+    """
+    bundle = load_bundle(SHIPPED_SLIDING_WINDOW_DIR)
+    by_section: dict[str, set[int]] = {}
+    for problem in bundle.problems:
+        by_section.setdefault(problem.section, set()).add(problem.lc_id)
+
+    assert by_section == {
+        "§1.1": {1456, 643, 1343, 2090, 2379, 2841, 2461, 1423},
+        "§1.2": {1052, 2134, 567, 438, 30, 1888, 2653},
+    }
+
+    # §1.2 的标题就是「进阶（选做）」，所以那一组必须是选做题。
+    # 规格 R5 有一条建议依赖 is_optional：「周 C 类占比 < 10% 且模板默写连续
+    # 2 周满分 → 加入本阶段的选做/进阶题」。全 false 会让那条规则永不触发。
+    optional = {p.lc_id for p in bundle.problems if p.is_optional}
+    assert optional == by_section["§1.2"]
+    assert not (optional & by_section["§1.1"])

@@ -1,4 +1,8 @@
-# 由 LeetCode 官方接口生成，标题与难度为权威数据，勿手工改动这两列。
+# 标题 / url / difficulty：取自 LeetCode 官方接口（/api/problems/all/），权威。
+# section / section_name / is_optional：取自灵神题单原文
+#   https://leetcode.cn/discuss/post/3578981/
+#   §1.1 基础；§1.2 进阶（选做，is_optional=true），其下含「思维扩展」一组。
+# is_starred：题单原文未对这 15 题标 ⭐，此处为使用者自己标的重点。
 
 - lc_id: 1456
   title: 定长子串中元音的最大数目
@@ -92,11 +96,11 @@
   title: 爱生气的书店老板
   url: https://leetcode.cn/problems/grumpy-bookstore-owner/
   difficulty: medium
-  section: "§1.1"
-  section_name: 定长滑动窗口 · 基础
+  section: "§1.2"
+  section_name: 定长滑动窗口 · 进阶（选做）
   is_starred: false
   is_premium: false
-  is_optional: false
+  is_optional: true
   default_template: A
 
 - lc_id: 567
@@ -104,10 +108,10 @@
   url: https://leetcode.cn/problems/permutation-in-string/
   difficulty: medium
   section: "§1.2"
-  section_name: 定长滑动窗口 · 进阶
+  section_name: 定长滑动窗口 · 进阶（选做）
   is_starred: true
   is_premium: false
-  is_optional: false
+  is_optional: true
   default_template: A
 
 - lc_id: 438
@@ -115,10 +119,10 @@
   url: https://leetcode.cn/problems/find-all-anagrams-in-a-string/
   difficulty: medium
   section: "§1.2"
-  section_name: 定长滑动窗口 · 进阶
+  section_name: 定长滑动窗口 · 进阶（选做）
   is_starred: true
   is_premium: false
-  is_optional: false
+  is_optional: true
   default_template: A
 
 - lc_id: 30
@@ -126,10 +130,10 @@
   url: https://leetcode.cn/problems/substring-with-concatenation-of-all-words/
   difficulty: hard
   section: "§1.2"
-  section_name: 定长滑动窗口 · 进阶
+  section_name: 定长滑动窗口 · 进阶（选做）
   is_starred: false
   is_premium: false
-  is_optional: false
+  is_optional: true
   default_template: A
 
 - lc_id: 2134
@@ -137,10 +141,10 @@
   url: https://leetcode.cn/problems/minimum-swaps-to-group-all-1s-together-ii/
   difficulty: medium
   section: "§1.2"
-  section_name: 定长滑动窗口 · 进阶
+  section_name: 定长滑动窗口 · 进阶（选做）
   is_starred: false
   is_premium: false
-  is_optional: false
+  is_optional: true
   default_template: A
 
 - lc_id: 1888
@@ -148,10 +152,10 @@
   url: https://leetcode.cn/problems/minimum-number-of-flips-to-make-the-binary-string-alternating/
   difficulty: medium
   section: "§1.2"
-  section_name: 定长滑动窗口 · 进阶
+  section_name: 定长滑动窗口 · 进阶（选做）
   is_starred: false
   is_premium: false
-  is_optional: false
+  is_optional: true
   default_template: A
 
 - lc_id: 2653
@@ -159,8 +163,8 @@
   url: https://leetcode.cn/problems/sliding-subarray-beauty/
   difficulty: medium
   section: "§1.2"
-  section_name: 定长滑动窗口 · 进阶
+  section_name: 定长滑动窗口 · 进阶（选做）
   is_starred: false
   is_premium: false
-  is_optional: false
+  is_optional: true
   default_template: A
