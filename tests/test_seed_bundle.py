@@ -18,6 +18,17 @@ card_fields:
   - {key: trigger_feature, label: 触发特征, type: text}
 """
 
+TOPIC_YAML_WITH_SECTION_TEMPLATES = """
+code: sliding-window
+name: 滑动窗口
+time_limits: {easy: 480, medium: 1200, hard: 2100}
+card_fields:
+  - {key: trigger_feature, label: 触发特征, type: text}
+section_templates:
+  "§1": A
+  "§2.2": C
+"""
+
 TEMPLATES_YAML = """
 - code: C
   name: 不定长·求最短
@@ -87,6 +98,135 @@ def test_unknown_default_template_rejected(tmp_path):
     problems = PROBLEMS_YAML.replace("default_template: C", "default_template: Z")
     with pytest.raises(SeedBundleError, match="lc_id=209 的 default_template=Z 不存在"):
         load_bundle(_write(tmp_path, problems=problems))
+
+
+# --- section_templates: derive default_template from the 题单 section ---
+
+TEMPLATES_A_AND_C_YAML = """
+- code: A
+  name: 定长滑窗
+  language: python
+  content: "..."
+  pitfalls: "..."
+  trigger_signal: "定长"
+- code: C
+  name: 不定长·求最短
+  language: python
+  content: "while ..."
+  pitfalls: "别忘了 del cnt[x]"
+  trigger_signal: "求最短/最小"
+"""
+
+PROBLEMS_NO_OVERRIDE_YAML = """
+- lc_id: 209
+  title: 长度最小的子数组
+  url: https://leetcode.cn/problems/minimum-size-subarray-sum/
+  difficulty: medium
+  section: "§2.2"
+  section_name: 越长越合法/求最短/最小
+- lc_id: 1456
+  title: 定长子串中元音的最大数目
+  url: https://leetcode.cn/problems/maximum-number-of-vowels-in-a-substring-of-given-length/
+  difficulty: medium
+  section: "§1.1"
+  section_name: 定长滑动窗口 · 基础
+"""
+
+PLAN_TWO_PROBLEMS_YAML = """
+name: 滑动窗口 30 天
+start_date: 2026-09-01
+days:
+  - day_index: 1
+    phase: 阶段一
+    theme: 定长窗口的三步走
+    problems: [209, 1456]
+"""
+
+
+def test_default_template_derived_from_section_templates(tmp_path):
+    bundle = load_bundle(
+        _write(
+            tmp_path,
+            topic=TOPIC_YAML_WITH_SECTION_TEMPLATES,
+            templates=TEMPLATES_A_AND_C_YAML,
+            problems=PROBLEMS_NO_OVERRIDE_YAML,
+            plan=PLAN_TWO_PROBLEMS_YAML,
+        )
+    )
+    by_lc_id = {p.lc_id: p for p in bundle.problems}
+    # §2.2 matches the "§2.2" key exactly -> C.
+    assert by_lc_id[209].default_template == "C"
+    # §1.1 has no exact key, falls back to the "§1" prefix -> A.
+    assert by_lc_id[1456].default_template == "A"
+
+
+def test_per_problem_default_template_overrides_derived_value(tmp_path):
+    # lc_id 209 is in §2.2 (derives to C via section_templates), but the
+    # problem entry explicitly overrides it to A -- the override must win.
+    problems = PROBLEMS_NO_OVERRIDE_YAML.replace(
+        'section_name: 越长越合法/求最短/最小\n',
+        'section_name: 越长越合法/求最短/最小\n  default_template: A\n',
+    )
+    bundle = load_bundle(
+        _write(
+            tmp_path,
+            topic=TOPIC_YAML_WITH_SECTION_TEMPLATES,
+            templates=TEMPLATES_A_AND_C_YAML,
+            problems=problems,
+            plan=PLAN_TWO_PROBLEMS_YAML,
+        )
+    )
+    by_lc_id = {p.lc_id: p for p in bundle.problems}
+    assert by_lc_id[209].default_template == "A"
+
+
+def test_section_with_no_matching_key_resolves_to_none(tmp_path):
+    problems = """
+- lc_id: 1
+  title: 无匹配小节
+  url: https://leetcode.cn/problems/x/
+  difficulty: medium
+  section: "§9.9"
+  section_name: 不在 section_templates 里
+"""
+    plan = """
+name: p
+start_date: 2026-09-01
+days:
+  - day_index: 1
+    phase: 阶段一
+    theme: t
+    problems: [1]
+"""
+    bundle = load_bundle(
+        _write(
+            tmp_path,
+            topic=TOPIC_YAML_WITH_SECTION_TEMPLATES,
+            templates=TEMPLATES_A_AND_C_YAML,
+            problems=problems,
+            plan=plan,
+        )
+    )
+    assert bundle.problems[0].default_template is None
+
+
+def test_section_templates_naming_unknown_template_rejected(tmp_path):
+    # section_templates points "§1" at a template code ("Z") that doesn't
+    # exist in templates.yaml -- must be rejected the same way an unknown
+    # per-problem default_template is.
+    topic = TOPIC_YAML_WITH_SECTION_TEMPLATES.replace('"§1": A', '"§1": Z')
+    with pytest.raises(
+        SeedBundleError, match=r"section_templates\.§1=Z 不存在于 templates\.yaml"
+    ):
+        load_bundle(
+            _write(
+                tmp_path,
+                topic=topic,
+                templates=TEMPLATES_A_AND_C_YAML,
+                problems=PROBLEMS_NO_OVERRIDE_YAML,
+                plan=PLAN_TWO_PROBLEMS_YAML,
+            )
+        )
 
 
 def test_plan_referencing_unknown_problem_rejected(tmp_path):
@@ -260,6 +400,19 @@ def test_shipped_sliding_window_bundle_is_valid():
         assert problem.title
         assert problem.url
         assert problem.section
+
+
+def test_shipped_sliding_window_problems_still_resolve_to_template_a():
+    # Regression guard for the whole "derive from section instead of
+    # hand-labelling" change: problems.yaml used to carry a
+    # `default_template: A` line on all 15 problems (all of them sit in
+    # §1.1/§1.2). Those lines are now gone, and topic.yaml's
+    # section_templates: {"§1": A} must reproduce the exact same result via
+    # resolve_section_template's longest-prefix match -- otherwise this
+    # change silently regressed what every shipped problem resolves to.
+    bundle = load_bundle(SHIPPED_SLIDING_WINDOW_DIR)
+    assert len(bundle.problems) == 15
+    assert {p.default_template for p in bundle.problems} == {"A"}
 
 
 def test_shipped_sliding_window_sections_match_the_source_list():

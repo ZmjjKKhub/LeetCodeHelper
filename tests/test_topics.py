@@ -5,6 +5,7 @@ from leetcode_helper.services.topics import (
     TopicConfigError,
     parse_topic_config,
     parse_topic_config_json,
+    resolve_section_template,
     time_limit_for,
 )
 
@@ -109,3 +110,64 @@ def test_card_fields_wrong_type_rejected():
     raw = {**VALID, "card_fields": "nope"}
     with pytest.raises(TopicConfigError, match="card_fields 必须是 list，实际是 str"):
         parse_topic_config(raw)
+
+
+def test_section_templates_defaults_to_empty_dict():
+    config = parse_topic_config(VALID)
+    assert config.section_templates == {}
+
+
+def test_section_templates_parsed():
+    raw = {**VALID, "section_templates": {"§1": "A", "§2.2": "C"}}
+    config = parse_topic_config(raw)
+    assert config.section_templates == {"§1": "A", "§2.2": "C"}
+
+
+def test_section_templates_wrong_type_rejected():
+    raw = {**VALID, "section_templates": ["§1", "A"]}
+    with pytest.raises(TopicConfigError, match="section_templates 必须是 dict，实际是 list"):
+        parse_topic_config(raw)
+
+
+def test_section_templates_empty_key_rejected():
+    raw = {**VALID, "section_templates": {"": "A"}}
+    with pytest.raises(TopicConfigError, match="section_templates 的 key 不能为空"):
+        parse_topic_config(raw)
+
+
+def test_section_templates_non_string_value_rejected():
+    raw = {**VALID, "section_templates": {"§1": 1}}
+    with pytest.raises(TopicConfigError, match=r"section_templates\.§1 的值必须是非空字符串"):
+        parse_topic_config(raw)
+
+
+def test_section_templates_roundtrips_through_json():
+    raw = {**VALID, "section_templates": {"§1": "A"}}
+    config = parse_topic_config(raw)
+    assert parse_topic_config_json(config.to_json()) == config
+
+
+# --- resolve_section_template: longest matching section prefix ---
+
+
+def test_resolve_section_template_longest_prefix_wins():
+    mapping = {"§1": "A", "§2.1": "B", "§2.2": "C", "§2.3": "D"}
+    # §1.1 and §1.2 both fall back to the general "§1" key.
+    assert resolve_section_template("§1.1", mapping) == "A"
+    assert resolve_section_template("§1.2", mapping) == "A"
+
+
+def test_resolve_section_template_prefers_specific_over_general_key():
+    # Both "§2" and "§2.2" are present and both match "§2.2" as a prefix --
+    # the more specific "§2.2" key must win, not the shorter "§2".
+    mapping = {"§2": "X", "§2.2": "C"}
+    assert resolve_section_template("§2.2", mapping) == "C"
+
+
+def test_resolve_section_template_unmatched_section_returns_none():
+    mapping = {"§1": "A", "§2.1": "B"}
+    assert resolve_section_template("§3.1", mapping) is None
+
+
+def test_resolve_section_template_empty_mapping_returns_none():
+    assert resolve_section_template("§1.1", {}) is None

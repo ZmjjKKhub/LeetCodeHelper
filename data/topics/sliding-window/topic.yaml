@@ -14,3 +14,10 @@ card_fields:
   - {key: maintained_value, label: 维护量,   type: choice, options: [sum, Counter, 不同元素个数, 其他]}
   - {key: shrink_condition, label: 收缩条件, type: text}
   - {key: count_timing,     label: 统计时机, type: choice, options: [入窗后, 出窗循环内, 出窗循环外]}
+
+# 题单按模板分节：§1 定长滑窗全部用模板 A；§2.1 求最长用 B；§2.2 求最短用 C；
+# §2.3 求个数用 D。按最长前缀匹配解析（services/topics.py::resolve_section_template），
+# 所以 §1.1/§1.2 都落到这里的 "§1"。取代逐题手标 default_template——见
+# problems.yaml 顶部注释和 seed/bundle.py::_parse_problems。
+section_templates:
+  "§1": A

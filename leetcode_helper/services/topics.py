@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from leetcode_helper.models import Difficulty
 
@@ -28,6 +28,13 @@ class TopicConfig:
     name: str
     time_limits: dict[str, int]
     card_fields: tuple[CardField, ...]
+    # Optional: maps a 题单 section prefix (e.g. "§1", "§2.2") to the template
+    # code every problem under that section uses. Resolved at seed-import
+    # time by resolve_section_template() below, via longest matching prefix,
+    # into Problem.default_template -- see seed/bundle.py::_parse_problems.
+    # A topic that omits it behaves exactly as before (every problem's
+    # default_template comes from its own optional per-problem override).
+    section_templates: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(
@@ -44,6 +51,7 @@ class TopicConfig:
                     }
                     for f in self.card_fields
                 ],
+                "section_templates": self.section_templates,
             },
             ensure_ascii=False,
         )
@@ -112,11 +120,29 @@ def parse_topic_config(raw: dict) -> TopicConfig:
             CardField(key=key, label=entry.get("label") or key, type=field_type, options=options)
         )
 
+    section_templates_raw = raw.get("section_templates")
+    if section_templates_raw is None:
+        section_templates_raw = {}
+    if not isinstance(section_templates_raw, dict):
+        raise TopicConfigError(
+            f"section_templates 必须是 dict，实际是 {type(section_templates_raw).__name__}"
+        )
+    section_templates: dict[str, str] = {}
+    for section_key, template_code in section_templates_raw.items():
+        if not isinstance(section_key, str) or not section_key:
+            raise TopicConfigError("section_templates 的 key 不能为空，且必须是字符串")
+        if not isinstance(template_code, str) or not template_code:
+            raise TopicConfigError(
+                f"section_templates.{section_key} 的值必须是非空字符串，实际是 {template_code!r}"
+            )
+        section_templates[section_key] = template_code
+
     return TopicConfig(
         code=raw["code"],
         name=raw["name"],
         time_limits=time_limits,
         card_fields=tuple(fields),
+        section_templates=section_templates,
     )
 
 
@@ -126,3 +152,21 @@ def parse_topic_config_json(text: str) -> TopicConfig:
 
 def time_limit_for(config: TopicConfig, difficulty: Difficulty) -> int:
     return config.time_limits[difficulty.value]
+
+
+def resolve_section_template(section: str, section_templates: dict[str, str]) -> str | None:
+    """Longest-prefix match: `section` (e.g. "§1.1") resolves to the template
+    code of whichever key in `section_templates` is both a prefix of it and
+    the longest such prefix -- so a specific "§2.2" key wins over a more
+    general "§2" key that also matches, while "§1.1"/"§1.2" both fall back to
+    a bare "§1" key. Returns None when no key is a prefix of `section`.
+
+    Pure and DB-free on purpose: this is a rule about topic configuration
+    shape, the same reason parse_topic_config lives here rather than in
+    seed/bundle.py.
+    """
+    best_key: str | None = None
+    for key in section_templates:
+        if section.startswith(key) and (best_key is None or len(key) > len(best_key)):
+            best_key = key
+    return section_templates[best_key] if best_key is not None else None

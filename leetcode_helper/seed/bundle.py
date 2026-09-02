@@ -12,7 +12,12 @@ from pathlib import Path
 import yaml
 
 from leetcode_helper.models import Difficulty
-from leetcode_helper.services.topics import TopicConfig, TopicConfigError, parse_topic_config
+from leetcode_helper.services.topics import (
+    TopicConfig,
+    TopicConfigError,
+    parse_topic_config,
+    resolve_section_template,
+)
 
 
 class SeedBundleError(ValueError):
@@ -102,7 +107,9 @@ def _parse_templates(raw: list) -> tuple[SeedTemplate, ...]:
     return tuple(templates)
 
 
-def _parse_problems(raw: list, template_codes: set[str]) -> tuple[SeedProblem, ...]:
+def _parse_problems(
+    raw: list, template_codes: set[str], section_templates: dict[str, str]
+) -> tuple[SeedProblem, ...]:
     if not raw:
         raise SeedBundleError("problems.yaml 不能为空，至少需要一道题目")
 
@@ -129,11 +136,20 @@ def _parse_problems(raw: list, template_codes: set[str]) -> tuple[SeedProblem, .
                 f"lc_id={lc_id} 的 difficulty 非法: {raw_difficulty}，只接受 easy/medium/hard"
             ) from None
 
-        default_template = entry.get("default_template")
-        if default_template is not None and default_template not in template_codes:
+        # default_template in problems.yaml is now an optional *per-problem
+        # override*. When a problem specifies it, that wins outright. When it
+        # doesn't, the template is derived from the section it belongs to via
+        # section_templates (longest matching prefix). When neither applies,
+        # it stays None -- same as before section_templates existed.
+        override_template = entry.get("default_template")
+        if override_template is not None and override_template not in template_codes:
             raise SeedBundleError(
-                f"lc_id={lc_id} 的 default_template={default_template} 不存在于 templates.yaml"
+                f"lc_id={lc_id} 的 default_template={override_template} 不存在于 templates.yaml"
             )
+        if override_template is not None:
+            default_template = override_template
+        else:
+            default_template = resolve_section_template(entry["section"], section_templates)
 
         problems.append(
             SeedProblem(
@@ -209,8 +225,21 @@ def load_bundle(topic_dir: Path) -> SeedBundle:
         raise SeedBundleError(str(exc)) from exc
 
     templates = _parse_templates(_read_yaml(topic_dir / "templates.yaml", list))
+    template_codes = {t.code for t in templates}
+
+    # section_templates' keys are already validated (non-empty strings) by
+    # parse_topic_config; the one thing it can't check on its own is whether
+    # each value names a template that actually exists -- that only becomes
+    # knowable once templates.yaml has been parsed, same all-or-nothing style
+    # as the default_template check below.
+    for section_key, template_code in config.section_templates.items():
+        if template_code not in template_codes:
+            raise SeedBundleError(
+                f"section_templates.{section_key}={template_code} 不存在于 templates.yaml"
+            )
+
     problems = _parse_problems(
-        _read_yaml(topic_dir / "problems.yaml", list), {t.code for t in templates}
+        _read_yaml(topic_dir / "problems.yaml", list), template_codes, config.section_templates
     )
     plan = _parse_plan(
         _read_yaml(topic_dir / "plan_default.yaml", dict), {p.lc_id for p in problems}
