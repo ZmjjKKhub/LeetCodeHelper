@@ -107,25 +107,29 @@ def _make_seeded_sliding_window_engine():
     return engine
 
 
-def test_api_progress_against_real_seed_data_reports_15_problems_across_two_sections():
-    """The shipped data/topics/sliding-window catalogue: 15 problems total,
-    §1.1 with 8 and §1.2 with 7 -- and today (inside the 5-day default plan,
-    day 3) reports the right day position."""
+def test_api_progress_against_real_seed_data_reports_223_problems_across_sixteen_sections():
+    """The shipped data/topics/sliding-window catalogue: the full 灵神题单,
+    223 non-premium problems across all 16 §-sections -- and today (inside
+    the 35-day default plan, day 3) reports the right day position."""
     engine = _make_seeded_sliding_window_engine()
 
-    # plan_default.yaml's start_date is 2026-08-31, day_index 3 -> 2026-09-02.
-    response = make_client(engine, today=date(2026, 9, 2)).get("/api/progress")
+    # plan_default.yaml's start_date is 2026-09-07, day_index 3 -> 2026-09-09.
+    response = make_client(engine, today=date(2026, 9, 9)).get("/api/progress")
 
     assert response.status_code == 200
     body = response.json()
 
     assert body["topic"]["code"] == "sliding-window"
-    assert body["stats"]["total"] == 15
-    assert [s["section"] for s in body["sections"]] == ["§1.1", "§1.2"]
-    assert body["sections"][0]["total"] == 8
-    assert body["sections"][1]["total"] == 7
-    assert sum(s["total"] for s in body["sections"]) == 15
+    assert body["stats"]["total"] == 223
+    assert [s["section"] for s in body["sections"]] == [
+        "§1.1", "§1.2", "§2.1", "§2.2", "§2.3", "§2.4",
+        "§3.1", "§3.2", "§3.3", "§3.4", "§3.5", "§3.6",
+        "§4.1", "§4.2", "§5", "§6",
+    ]
+    expected_totals = [8, 18, 28, 7, 18, 5, 12, 26, 7, 2, 17, 2, 15, 10, 5, 43]
+    assert [s["total"] for s in body["sections"]] == expected_totals
+    assert sum(s["total"] for s in body["sections"]) == 223
 
     assert body["plan"] is not None
     assert body["plan"]["day_index"] == 3
-    assert body["plan"]["total_days"] == 5
+    assert body["plan"]["total_days"] == 35

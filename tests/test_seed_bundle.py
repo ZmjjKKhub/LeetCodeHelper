@@ -4,6 +4,7 @@ import pytest
 import yaml
 
 from leetcode_helper.seed.bundle import SeedBundleError, load_bundle
+from leetcode_helper.services.topics import resolve_section_template
 
 # Repo root, resolved from this file's location rather than the process cwd,
 # so this test passes no matter where pytest is invoked from.
@@ -375,15 +376,18 @@ def test_shipped_sliding_window_bundle_is_valid():
     # would only be caught here instead of by a real user hitting it.
     bundle = load_bundle(SHIPPED_SLIDING_WINDOW_DIR)
 
-    assert len(bundle.problems) == 15
+    # 223 = 灵神题单的非会员题总数（scripts/build_sliding_window_catalogue.py
+    # 生成时报告过的数字）。会员题被那个脚本整个丢弃，所以这里不应该有任何
+    # is_premium=True 的条目。
+    assert len(bundle.problems) == 223
+    assert not any(p.is_premium for p in bundle.problems)
 
-    # Cross-check that matters for Phase 1.5, when the remaining problems
-    # and the 30-day plan get appended: the plan's problem references and
+    # Cross-check that matters for import: the plan's problem references and
     # the problem set must line up exactly, with nothing on either side
     # left orphaned.
     plan_lc_ids = {lc_id for day in bundle.plan.days for lc_id in day.problem_lc_ids}
     problem_lc_ids = {p.lc_id for p in bundle.problems}
-    assert plan_lc_ids == problem_lc_ids
+    assert plan_lc_ids <= problem_lc_ids
 
     # Every default_template must resolve to a template that actually
     # exists in templates.yaml (load_bundle already enforces this while
@@ -402,43 +406,132 @@ def test_shipped_sliding_window_bundle_is_valid():
         assert problem.section
 
 
-def test_shipped_sliding_window_problems_still_resolve_to_template_a():
-    # Regression guard for the whole "derive from section instead of
-    # hand-labelling" change: problems.yaml used to carry a
-    # `default_template: A` line on all 15 problems (all of them sit in
-    # §1.1/§1.2). Those lines are now gone, and topic.yaml's
-    # section_templates: {"§1": A} must reproduce the exact same result via
-    # resolve_section_template's longest-prefix match -- otherwise this
-    # change silently regressed what every shipped problem resolves to.
-    bundle = load_bundle(SHIPPED_SLIDING_WINDOW_DIR)
-    assert len(bundle.problems) == 15
-    assert {p.default_template for p in bundle.problems} == {"A"}
+def test_shipped_sliding_window_plan_covers_every_non_optional_problem_once():
+    """plan_default.yaml：35 天、172 道题，题题都在 problems.yaml 里存在、
+    题题都不是选做题，且每题只排一次——这三条是 seed/importer.py 增量 upsert
+    逻辑能安全工作的前提，被排期两次的题会在导入时产生两个 PlanItem 撞
+    UniqueConstraint("plan_day_id", "problem_id")（同一天两次)或被悄悄去重
+    （不同天两次），两种结果都不是我们想要的。
 
-
-def test_shipped_sliding_window_sections_match_the_source_list():
-    """小节划分必须与灵神题单原文一致。
-
-    https://leetcode.cn/discuss/post/3578981/ 的「一、定长滑动窗口」下：
-      §1.1 基础        1456, 643, 1343, 2090, 2379, 2841, 2461, 1423
-      §1.2 进阶（选做） 1052, 2134, 567, 438, 30, 1888（其下「思维扩展」含 2653）
-
-    这条断言存在的原因：section 决定 P7 热力图的分组和 R5「某 section 的 C 类题
-    占比 > 50%」规则，而它无法从 LeetCode 官方接口取得——只能照抄题单。1052 曾
-    被错放进 §1.1，正是这类错误没有断言看着才会发生。
+    172 = 223 题减去 51 道选做题；5 题/天，最后一天只有 2 题，共 35 天。
     """
     bundle = load_bundle(SHIPPED_SLIDING_WINDOW_DIR)
-    by_section: dict[str, set[int]] = {}
-    for problem in bundle.problems:
-        by_section.setdefault(problem.section, set()).add(problem.lc_id)
 
-    assert by_section == {
-        "§1.1": {1456, 643, 1343, 2090, 2379, 2841, 2461, 1423},
-        "§1.2": {1052, 2134, 567, 438, 30, 1888, 2653},
+    assert len(bundle.plan.days) == 35
+
+    plan_lc_ids = [lc_id for day in bundle.plan.days for lc_id in day.problem_lc_ids]
+    assert len(plan_lc_ids) == 172
+    assert len(set(plan_lc_ids)) == 172  # 不重复排期
+
+    by_lc_id = {p.lc_id: p for p in bundle.problems}
+    for lc_id in plan_lc_ids:
+        assert lc_id in by_lc_id  # 每个排期引用的题都真的存在
+        assert by_lc_id[lc_id].is_optional is False  # 选做题不进排期
+
+    # 反过来也要成立：所有非选做题都被排进了计划里，一个都不漏。
+    non_optional_lc_ids = {p.lc_id for p in bundle.problems if not p.is_optional}
+    assert set(plan_lc_ids) == non_optional_lc_ids
+
+
+def test_shipped_sliding_window_sections_match_the_expected_set():
+    """小节划分必须与 scripts/build_sliding_window_catalogue.py 解析灵神题单
+    原文（https://leetcode.cn/discuss/post/3578981/）得到的结果一致：六个大
+    节、十六个 "§X.Y" 编号（"五、三指针"/"六、分组循环" 正文没有编号，脚本
+    兜底成 "§5"/"§6"），且每个 section 内的 total/optional 数目固定。
+
+    §2.1 (28/18) 和 §2.3 (18/2) 这两行精确钉住了 "####" 四级标题的作用域
+    规则：§2.1 下 "#### §2.1.2 进阶（选做）" 必须让它底下 18 题（不是 0 题）
+    is_optional=True；§2.3 下 "#### §2.3.1" 里那条
+    "**思维扩展（选做）**" 只能覆盖它之后、下一个 "#### §2.3.2" 之前的 2 题
+    （3134/3261），不能一路蔓延到 §2.3.2/§2.3.3 把 1358/2962/.../3859 这些
+    核心的"求子数组个数"题也带成选做——这正是曾经出现过的回归（作用域没有
+    在新 "#### " 上正确清空导致 §2.1 变成 0 题选做、§2.3 变成 14 题选做）。
+
+    这条断言存在的原因：section 决定 P7 热力图的分组和 R5「某 section 的 C 类
+    题占比 > 50%」规则，而它无法从 LeetCode 官方接口取得——只能照抄题单，抄错
+    了也没有类型系统能发现。
+    """
+    bundle = load_bundle(SHIPPED_SLIDING_WINDOW_DIR)
+
+    counts: dict[str, dict[str, int]] = {}
+    for problem in bundle.problems:
+        c = counts.setdefault(problem.section, {"total": 0, "optional": 0})
+        c["total"] += 1
+        if problem.is_optional:
+            c["optional"] += 1
+
+    assert counts == {
+        "§1.1": {"total": 8, "optional": 0},
+        "§1.2": {"total": 18, "optional": 18},
+        "§2.1": {"total": 28, "optional": 18},
+        "§2.2": {"total": 7, "optional": 0},
+        "§2.3": {"total": 18, "optional": 2},
+        "§2.4": {"total": 5, "optional": 5},
+        "§3.1": {"total": 12, "optional": 0},
+        "§3.2": {"total": 26, "optional": 2},
+        "§3.3": {"total": 7, "optional": 0},
+        "§3.4": {"total": 2, "optional": 0},
+        "§3.5": {"total": 17, "optional": 5},
+        "§3.6": {"total": 2, "optional": 0},
+        "§4.1": {"total": 15, "optional": 0},
+        "§4.2": {"total": 10, "optional": 0},
+        "§5": {"total": 5, "optional": 1},
+        "§6": {"total": 43, "optional": 0},
     }
 
-    # §1.2 的标题就是「进阶（选做）」，所以那一组必须是选做题。
-    # 规格 R5 有一条建议依赖 is_optional：「周 C 类占比 < 10% 且模板默写连续
-    # 2 周满分 → 加入本阶段的选做/进阶题」。全 false 会让那条规则永不触发。
-    optional = {p.lc_id for p in bundle.problems if p.is_optional}
-    assert optional == by_section["§1.2"]
-    assert not (optional & by_section["§1.1"])
+    # §2.1.2 (2730 等 18 题) 必须落在 §2.1 这个 section code 下，不是自成
+    # "§2.1.2"——"####" 只影响 is_optional，不产生新的 section。
+    by_lc_id = {p.lc_id: p for p in bundle.problems}
+    for lc_id in (2730, 2779, 1658, 1838, 2516, 2831, 2271, 2106, 2555, 2009):
+        assert by_lc_id[lc_id].section == "§2.1"
+        assert by_lc_id[lc_id].is_optional is True
+
+    # §2.3.2/§2.3.3 的核心题必须是非选做——正是曾经被 "####" 作用域 bug
+    # 错误吞掉选做状态的那批题。
+    for lc_id in (1358, 2962, 3325, 2062, 2799, 2537, 3298, 930, 1248, 3306, 992, 3859):
+        assert by_lc_id[lc_id].section == "§2.3"
+        assert by_lc_id[lc_id].is_optional is False
+
+    # 每个 section 内部的 is_optional 不是随便混的：整节标题写了"选做"的
+    # （§1.2/§2.4）必须全员选做；其余没有该标注、也没有嵌套"####"/加粗细化
+    # 的 section（§1.1/§2.2/§3.1/§3.3/§3.4/§3.6/§4.1/§4.2/§6）必须全员非
+    # 选做。§2.1/§2.3/§3.2/§3.5/§5 是两者都有的混合 section（分别来自嵌套的
+    # "#### 进阶（选做）"/"思维扩展（选做）"/"思维扩展"），上面的精确计数
+    # 已经钉住了它们的比例。
+    fully_optional = {"§1.2", "§2.4"}
+    fully_required = {
+        "§1.1", "§2.2", "§3.1", "§3.3", "§3.4", "§3.6", "§4.1", "§4.2", "§6",
+    }
+    for section, c in counts.items():
+        if section in fully_optional:
+            assert c["optional"] == c["total"], section
+        elif section in fully_required:
+            assert c["optional"] == 0, section
+
+    assert set(counts) == fully_optional | fully_required | {
+        "§2.1", "§2.3", "§3.2", "§3.5", "§5",
+    }
+
+
+def test_shipped_sliding_window_default_template_resolution():
+    """resolve_section_template 通过 topic.yaml 的 section_templates 按最长
+    前缀匹配，把每题的 section 解到 templates.yaml 里的某个模板代码上（或者
+    解不到、留 None）。这里直接在真实的 223 题目录上验证三种代表情况：
+    §1.1 有模板（A）、§2.2 有模板（C，且不是被 "§1" 前缀污染的 A）、§4.1 没
+    配模板（None，这是设计好的，不是漏配——见 topic.yaml 的注释）。
+    """
+    bundle = load_bundle(SHIPPED_SLIDING_WINDOW_DIR)
+    by_section_first: dict[str, str | None] = {}
+    for problem in bundle.problems:
+        by_section_first.setdefault(problem.section, problem.default_template)
+
+    assert by_section_first["§1.1"] == "A"
+    assert by_section_first["§2.2"] == "C"
+    assert by_section_first["§4.1"] is None
+
+    # 同一件事也直接用 resolve_section_template 验证一遍，不经过 problems.yaml
+    # 这层间接——两边应该完全一致。
+    section_templates = bundle.config.section_templates
+    assert resolve_section_template("§1.1", section_templates) == "A"
+    assert resolve_section_template("§2.2", section_templates) == "C"
+    assert resolve_section_template("§4.1", section_templates) is None

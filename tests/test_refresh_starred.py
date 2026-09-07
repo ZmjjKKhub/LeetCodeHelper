@@ -72,7 +72,9 @@ def test_shipped_problems_yaml_is_rewritable_without_semantic_change():
     """真实那份 problems.yaml 能被这个脚本原样改写。
 
     脚本用正则逐块改写，格式一旦不符合预期就会静默失配——所以拿真文件跑一遍，
-    喂进「所有题都未收藏」的映射，结果必须与原文逐字节相同。
+    喂进「所有题都未收藏」的映射，结果必须与原文逐字节相同。生成的题库里
+    is_starred 全部是 false（题单原文不区分星标），所以这里没有任何一题会被
+    改动。
     """
     import yaml
 
@@ -82,7 +84,8 @@ def test_shipped_problems_yaml_is_rewritable_without_semantic_change():
     updated, changed, missing = apply_favorites(text, dict.fromkeys(lc_ids, False))
 
     assert missing == []
-    assert changed == [567, 438]  # 目前仅这两道是 true，会被清掉
+    assert changed == []
+    assert updated == text
     assert [p["lc_id"] for p in yaml.safe_load(updated)] == lc_ids
     assert all(p["is_starred"] is False for p in yaml.safe_load(updated))
 
