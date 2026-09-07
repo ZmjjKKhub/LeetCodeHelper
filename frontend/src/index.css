@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+/* Fonts are bundled by @fontsource, never fetched from a CDN (spec C3 +
+   §1: "前端依赖一律不走 CDN，字体也不走"). Each weight's plain "400.css" etc.
+   pulls every unicode-range subset @fontsource ships (latin, latin-ext,
+   cyrillic, cyrillic-ext, greek, vietnamese) -- IBM Plex has no CJK glyphs
+   in any of those (that lives in the separate ibm-plex-sans-sc/-jp/-kr
+   packages we deliberately do not install), but the task calls for Latin
+   only, so import each weight's "latin-*.css" file specifically instead
+   of the all-subsets default. Chinese text falls through to the system
+   font stack below either way, which is also what the design mockups were
+   rendered with. Only the weights the design actually uses are imported. */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+
+/* Regenerated on every `npm run dev`/`npm run build` from design/tokens.css
+   -- see the syncDesignTokens plugin in vite.config.ts. Not committed. */
+@import "./styles/tokens.generated.css";
+
+/* Tailwind v4 CSS-first theme config: map the semantic token custom
+   properties above onto Tailwind's color/font namespace, so components
+   write `bg-panel` / `text-text-bright` / `border-border` etc. instead of
+   ever touching a hex literal directly (enforced by
+   tests/test_frontend_no_hex_colors.py). */
+@theme {
+  --color-alert: var(--alert);
+  --color-bg: var(--bg);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-border-strong: var(--border-strong);
+  --color-btn-border: var(--btn-border);
+  --color-card: var(--card);
+  --color-cell-empty: var(--cell-empty);
+  --color-dim: var(--dim);
+  --color-dim2: var(--dim2);
+  --color-easy: var(--easy);
+  --color-hard: var(--hard);
+  --color-medium: var(--medium);
+  --color-med-chip-bg: var(--med-chip-bg);
+  --color-muted: var(--muted);
+  --color-nav-active: var(--nav-active);
+  --color-panel: var(--panel);
+  --color-sel-bg: var(--sel-bg);
+  --color-sel-border: var(--sel-border);
+  --color-subpanel: var(--subpanel);
+  --color-text: var(--text);
+  --color-text-bright: var(--text-bright);
+  --color-text-soft: var(--text-soft);
+  --color-today-ring: var(--today-ring);
+
+  /* System-ui/sans-serif and monospace fallbacks so CJK (unsupported by
+     the bundled Latin-only IBM Plex files) resolves to the OS font, per
+     spec §1. */
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}

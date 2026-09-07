@@ -10,7 +10,7 @@ from typing import Callable
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine
@@ -26,6 +26,15 @@ from leetcode_helper.web.routes import today as today_routes
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# The React SPA's build output (spec C5: FastAPI static-serves the
+# frontend/dist Vite build; still one process). Not committed --
+# frontend/dist is gitignored -- so this may not exist on a fresh clone
+# that hasn't run `npm run build` yet; create_app() below checks
+# .is_dir() at app-build time rather than assuming it's there. Module
+# level (not a local in create_app) so tests can monkeypatch it to
+# exercise the "not built yet" branch without actually deleting anything.
+FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # Chinese display labels for DurationBucket. Kept here (next to format_limit,
 # the other display-formatting helper) rather than in a route module: a
@@ -196,4 +205,41 @@ def create_app(
     app.include_router(today_routes.router)
     app.include_router(history_routes.router)
     app.include_router(api_router, prefix="/api")
+
+    # React SPA, mounted last on purpose. Starlette resolves a request
+    # against its route list in registration order and stops at the first
+    # match -- every route above (the /today and /history pages, the
+    # /api/* routers, the /static mount, the exact "/" redirect) is
+    # registered first, so none of them can ever be shadowed by the
+    # catch-all `{full_path:path}` route added here. It only ever fires
+    # for a path none of those already claimed.
+    if FRONTEND_DIST_DIR.is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")),
+            name="frontend-assets",
+        )
+        index_html = FRONTEND_DIST_DIR / "index.html"
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa_catch_all(full_path: str) -> FileResponse:
+            return FileResponse(index_html)
+    else:
+        # A fresh clone (or one where `npm run build` in frontend/ just
+        # hasn't been run yet) must still start and say something a person
+        # can act on -- not crash at mount time (StaticFiles raises if its
+        # directory is missing) and not a bare 404/500 on every route the
+        # SPA would otherwise serve. Mirrors app.py's own "migrations
+        # haven't run yet" message for the same reason.
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa_not_built(full_path: str) -> HTMLResponse:
+            return HTMLResponse(
+                "<h1>前端还没有构建</h1>"
+                "<p>请先执行：</p>"
+                "<pre>cd frontend\nnpm install\nnpm run build</pre>"
+                "<p>然后重新运行 <code>uv run app.py</code>。"
+                "（/today 与 /history 这两个 Jinja 页面不受影响，可以照常使用。）</p>",
+                status_code=503,
+            )
+
     return app
