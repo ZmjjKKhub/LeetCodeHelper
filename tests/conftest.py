@@ -133,8 +133,7 @@ def make_client(
 
 @pytest.fixture
 def client(engine):
-    # Fallback mode (no active plan): matches the original
-    # tests/test_web_attempt_post.py fixture, which every POST /attempts test
-    # was written against.
+    # Fallback mode (no active plan) -- what every POST /api/attempts test
+    # is written against.
     seed(engine, with_plan=False)
     return make_client(engine)

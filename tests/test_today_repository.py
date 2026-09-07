@@ -343,8 +343,7 @@ def test_unknown_topic_id_raises_lookup_error(session):
 
 
 # ---------------------------------------------------------------------------
-# active_topic / list_template_options / get_problem_item (moved from
-# web/routes/today.py, plus get_problem_item is new)
+# active_topic / list_template_options / get_problem_item
 # ---------------------------------------------------------------------------
 
 

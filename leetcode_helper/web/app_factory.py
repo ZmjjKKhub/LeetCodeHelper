@@ -2,30 +2,18 @@
 
 from __future__ import annotations
 
-import html
 from datetime import date
 from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI, Request
-from fastapi.exception_handlers import request_validation_exception_handler
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine
-from sqlmodel import Session
 
 from leetcode_helper.api import router as api_router
 from leetcode_helper.db import get_engine
-from leetcode_helper.models import Attempt, DurationBucket
-from leetcode_helper.repositories.today import NoActiveTopic, get_problem_item, list_template_options
-from leetcode_helper.services.attempts import OUTCOME_CONSEQUENCES, OUTCOME_LABELS, Outcome, outcome_of
-from leetcode_helper.web.routes import history as history_routes
-from leetcode_helper.web.routes import today as today_routes
-
-TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
-STATIC_DIR = Path(__file__).resolve().parent / "static"
+from leetcode_helper.repositories.today import NoActiveTopic
 
 # The React SPA's build output (spec C5: FastAPI static-serves the
 # frontend/dist Vite build; still one process). Not committed --
@@ -35,55 +23,6 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 # level (not a local in create_app) so tests can monkeypatch it to
 # exercise the "not built yet" branch without actually deleting anything.
 FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-
-# Chinese display labels for DurationBucket. Kept here (next to format_limit,
-# the other display-formatting helper) rather than in a route module: a
-# route only handles one page, but this label is a property of the enum
-# itself and any page rendering an Attempt needs it consistently.
-#
-# Keyed by the enum member (not `.value`) and asserted complete against
-# `DurationBucket` below -- a route-local `dict[str, str]` keyed by `.value`
-# has no such check, so adding a new bucket to the enum without updating the
-# dict would silently raise KeyError mid-render the first time that bucket
-# was actually hit, instead of failing loudly at import time.
-BUCKET_LABELS: dict[DurationBucket, str] = {
-    DurationBucket.within: "限时内",
-    DurationBucket.over: "超时",
-    DurationBucket.unsolved: "没做出来",
-}
-assert set(BUCKET_LABELS) == set(DurationBucket), "BUCKET_LABELS 未覆盖所有 DurationBucket 枚举值"
-
-
-def format_limit(seconds: int) -> str:
-    return f"{seconds // 60:02d}:{seconds % 60:02d}"
-
-
-def format_bucket(bucket: DurationBucket) -> str:
-    return BUCKET_LABELS[bucket]
-
-
-def format_outcome(outcome: Outcome) -> str:
-    return OUTCOME_LABELS[outcome]
-
-
-def format_outcome_consequence(outcome: Outcome | str) -> str:
-    """Template-side wrapper over services.attempts.OUTCOME_CONSEQUENCES so
-    the outcome-button `title` tooltips read from the same single source of
-    truth /api/meta reports, instead of carrying their own literal copies of
-    the review-consequence text. The four buttons in
-    partials/_problem_row.html pass their own literal `value="..."` string
-    (not an Outcome instance) through this filter, so it accepts either.
-    """
-    if not isinstance(outcome, Outcome):
-        outcome = Outcome(outcome)
-    return OUTCOME_CONSEQUENCES[outcome]
-
-
-def attempt_outcome(attempt: Attempt) -> Outcome | None:
-    """Template-side wrapper so `{{ item.attempt | outcome_of }}` reads the
-    same as the other filters here, rather than importing the service
-    function directly into every template."""
-    return outcome_of(attempt)
 
 
 def create_app(
@@ -95,28 +34,25 @@ def create_app(
     app.state.engine = engine if engine is not None else get_engine()
     app.state.today_provider = today_provider if today_provider is not None else date.today
 
-    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-    templates.env.filters["limit"] = format_limit
-    templates.env.filters["bucket_label"] = format_bucket
-    templates.env.filters["outcome_label"] = format_outcome
-    templates.env.filters["outcome_consequence"] = format_outcome_consequence
-    templates.env.filters["outcome_of"] = attempt_outcome
-    app.state.templates = templates
-
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-    @app.get("/", include_in_schema=False)
-    def root() -> RedirectResponse:
-        return RedirectResponse("/today")
+    @app.get("/today", include_in_schema=False)
+    def redirect_today() -> RedirectResponse:
+        # /today was the old Jinja page's URL. The React app's Today page now
+        # lives at "/" -- redirect old bookmarks/links there instead of
+        # letting the request fall through to the SPA catch-all below (which
+        # would serve index.html at a URL the app itself never routes to,
+        # since App.tsx has no "/today" route -- React Router's own
+        # `<Route path="*">` would then bounce it to "/" client-side anyway,
+        # but a server-side redirect gets there in one hop instead of two).
+        return RedirectResponse("/")
 
     @app.exception_handler(NoActiveTopic)
-    def no_topic_configured(request: Request, exc: NoActiveTopic) -> HTMLResponse | JSONResponse:
+    def no_topic_configured(request: Request, exc: NoActiveTopic) -> JSONResponse:
         # NoActiveTopic means "no active topic exists" -- most commonly
         # because the seed importer has never been run. That is an expected,
         # recoverable state for a fresh install, not a bug: surface it as a
-        # plain explanatory page (503, since the service genuinely has
-        # nothing to serve yet) instead of letting FastAPI turn it into an
-        # unhandled 500 with a raw stack trace.
+        # 503 JSON body (the only kind of client left is the React
+        # frontend's own fetch calls under /api/*) instead of letting
+        # FastAPI turn it into an unhandled 500 with a raw stack trace.
         #
         # This handler is registered on NoActiveTopic specifically, *not* the
         # bare LookupError it subclasses. LookupError is also the base class
@@ -124,95 +60,17 @@ def create_app(
         # relabel unrelated internal bugs (e.g. a raw dict/list subscript
         # error anywhere in the request) as "you forgot to seed" and destroy
         # their traceback.
-        #
-        # /api/* requests must get a JSON body, not an HTML fragment -- a
-        # JSON client (the React frontend this API exists for) has no HTML
-        # parser in its error path.
-        if request.url.path.startswith("/api/"):
-            return JSONResponse({"detail": str(exc)}, status_code=503)
-        return HTMLResponse(
-            f"<h1>还没有可用的专题</h1><p>{html.escape(str(exc))}</p>",
-            status_code=503,
-        )
+        return JSONResponse({"detail": str(exc)}, status_code=503)
 
-    @app.exception_handler(RequestValidationError)
-    async def form_validation_error(
-        request: Request, exc: RequestValidationError
-    ) -> HTMLResponse | JSONResponse:
-        # /api/* requests get FastAPI's own default JSON error body (a list
-        # of {loc, msg, type} error dicts under "detail") -- never the HTML
-        # this handler builds for the HTMX-driven form pages below. A JSON
-        # client has no use for an HTML fragment/page on a validation error.
-        if request.url.path.startswith("/api/"):
-            return await request_validation_exception_handler(request, exc)
-
-        # A bogus enum value (e.g. outcome="Z") or a missing/non-numeric
-        # problem_id fails FastAPI/Pydantic's own Form(...) coercion *before*
-        # the route body runs -- routes/today.py's own try/except around
-        # record_attempt never sees it. Left to FastAPI's default, this would
-        # be a JSON body, which for an HTMX-driven fragment endpoint is
-        # either dumped raw into the page on swap or silently dropped.
-        if request.url.path != "/attempts":
-            return HTMLResponse(
-                f"<h1>请求参数错误</h1><p>{html.escape(str(exc))}</p>", status_code=422
-            )
-
-        # Recover the raw submitted problem_id ourselves so we can still
-        # target and re-render the failed row -- but only trust it if it is
-        # purely digits. This handler reads the form directly, bypassing the
-        # int coercion Form(...) would normally have done, so an
-        # attacker-controlled value could otherwise flow straight into an
-        # HTML attribute/id (a real reflected-injection probe, not
-        # theoretical: `problem_id='"><script>alert(1)</script>'` used to
-        # come back live in the response body).
-        problem_id: int | None = None
-        try:
-            form = await request.form()
-            raw = form.get("problem_id")
-            if raw is not None and str(raw).isdigit():
-                problem_id = int(str(raw))
-        except Exception:
-            pass
-
-        if problem_id is not None:
-            with Session(app.state.engine) as session:
-                try:
-                    item = get_problem_item(session, problem_id)
-                    template_options = list_template_options(session, item.problem.topic_id)
-                except Exception:
-                    item = None
-                if item is not None:
-                    return app.state.templates.TemplateResponse(
-                        request,
-                        "partials/_problem_row.html",
-                        {
-                            "item": item,
-                            "template_options": template_options,
-                            "error": "提交的数据不合法，请重新选择后再试",
-                        },
-                        status_code=422,
-                    )
-
-        # No usable problem_id to key a row off of (missing, non-numeric, or
-        # a problem that no longer exists) -- there is no real #problem-N
-        # element we could safely target, so don't fabricate one. Surface a
-        # page-level notice instead of silently doing nothing.
-        return HTMLResponse(
-            '<p class="error">保存失败：提交的数据不合法，请刷新页面后重试</p>',
-            status_code=422,
-        )
-
-    app.include_router(today_routes.router)
-    app.include_router(history_routes.router)
     app.include_router(api_router, prefix="/api")
 
     # React SPA, mounted last on purpose. Starlette resolves a request
     # against its route list in registration order and stops at the first
-    # match -- every route above (the /today and /history pages, the
-    # /api/* routers, the /static mount, the exact "/" redirect) is
-    # registered first, so none of them can ever be shadowed by the
+    # match -- /today, the /api/* router, and the /assets mount below are
+    # all registered first, so none of them can ever be shadowed by the
     # catch-all `{full_path:path}` route added here. It only ever fires
-    # for a path none of those already claimed.
+    # for a path none of those already claimed -- including "/" and
+    # "/history", both of which the React app itself routes client-side.
     if FRONTEND_DIST_DIR.is_dir():
         app.mount(
             "/assets",
@@ -238,7 +96,7 @@ def create_app(
                 "<p>请先执行：</p>"
                 "<pre>cd frontend\nnpm install\nnpm run build</pre>"
                 "<p>然后重新运行 <code>uv run app.py</code>。"
-                "（/today 与 /history 这两个 Jinja 页面不受影响，可以照常使用。）</p>",
+                "（/api/* 这些 JSON 接口不受影响，可以照常使用。）</p>",
                 status_code=503,
             )
 

@@ -1,8 +1,7 @@
-"""JSON API layer for the React frontend migration.
+"""JSON API layer for the React frontend.
 
-Every route here returns JSON only, mirrors an existing Jinja page's data
-(see web/routes/), and goes through repositories/ exactly as the HTML routes
-do -- no select() in this package. Mounted under /api by
+Every route here returns JSON only and goes through repositories/ -- no
+select() in this package. Mounted under /api by
 web/app_factory.py::create_app.
 """
 

@@ -35,9 +35,8 @@ def api_create_attempt(request: Request, body: AttemptCreateIn) -> TodayItemOut:
     app = request.app
     today: date_type = app.state.today_provider()
 
-    # Same split-at-the-boundary rule the HTML form POST uses (see
-    # web/routes/today.py::create_attempt) -- AttemptInput/build_attempt/the
-    # repository never learn about Outcome, only duration_bucket + mark.
+    # Split-at-the-boundary rule: AttemptInput/build_attempt/the repository
+    # never learn about Outcome, only duration_bucket + mark.
     duration_bucket, mark = split_outcome(body.outcome)
 
     with Session(app.state.engine) as session:

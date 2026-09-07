@@ -111,8 +111,7 @@ def test_post_api_attempts_bad_submit_count_is_422_json(client, engine):
 
 
 def test_post_api_attempts_corrupt_topic_config_is_422_json_not_500(engine):
-    # Mirrors test_web_attempt_post.py::test_post_attempt_corrupt_topic_config_is_422_not_500 --
-    # a corrupt topic.config_json raises a TopicConfigError (a ValueError
+    # A corrupt topic.config_json raises a TopicConfigError (a ValueError
     # subclass) inside record_attempt, which the route must turn into a 422,
     # not an unhandled 500.
     seed(engine, with_plan=False, config_json=CORRUPT_CONFIG_JSON)

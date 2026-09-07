@@ -3,16 +3,12 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { HistoryPage } from "./pages/History";
 import { TodayPage } from "./pages/Today";
 
-// Mounted at basename="/app" (see main.tsx) -- FastAPI's catch-all
+// Mounted at the root (see main.tsx -- no basename) -- FastAPI's catch-all
 // (leetcode_helper/web/app_factory.py) serves index.html for any path that
-// isn't /api, /today, /history or /static, but "/today" and "/history"
-// exact-match the still-live Jinja pages *first* (registered before the
-// catch-all) and so never reach this SPA at all. "/app" is therefore the
-// SPA's own root: Today lives at its "/" (-> served at /app) and History
-// at its "/history" (-> served at /app/history), matching the design
-// artboards' page structure one level down from where a browser actually
-// loads them, without touching app_factory.py's routing or the Jinja
-// pages it still serves untouched at /today and /history.
+// isn't /api or /assets, so this router owns the whole origin: Today lives
+// at "/" and History at "/history", matching the design artboards' page
+// structure directly. GET /today (the old Jinja page's URL) is redirected
+// server-side to "/" by app_factory.py before it ever reaches this router.
 export default function App() {
   return (
     <Routes>

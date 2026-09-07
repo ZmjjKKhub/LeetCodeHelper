@@ -6,8 +6,8 @@ pydantic-dataclass machinery), so there is no need to reach for BaseModel
 just to get typed, documented output. They deliberately do not reuse the
 repository dataclasses (TodayItem, TodayView, HistoryRow, ...) directly:
 those carry full SQLModel rows (e.g. TodayItem.problem is a `Problem` table
-row) and are shaped for the Jinja templates, not for a stable public JSON
-contract. leetcode_helper/api/converters.py maps one to the other.
+row) and are shaped for internal repository consumers, not for a stable
+public JSON contract. leetcode_helper/api/converters.py maps one to the other.
 
 AttemptCreateIn is the one exception -- it is a *request* body, where
 pydantic's own validation (and its resulting 422 error shape) is the actual
@@ -166,9 +166,8 @@ class ProgressOut:
 
 
 class AttemptCreateIn(BaseModel):
-    """POST /api/attempts request body. Same semantics as the existing
-    HTML form POST to /attempts (see web/routes/today.py) -- including
-    update-in-place when an attempt already exists for the problem today.
+    """POST /api/attempts request body -- update-in-place when an attempt
+    already exists for the problem today.
     """
 
     problem_id: int

@@ -7,12 +7,18 @@ from sqlmodel import Session
 
 from leetcode_helper.repositories.attempts import list_history
 from leetcode_helper.repositories.today import active_topic
-from leetcode_helper.web.routes.history import HISTORY_LIMIT
 
 from ..converters import to_history_row_out
 from ..schemas import HistoryOut
 
 router = APIRouter()
+
+# list_history caps at this many rows. A silent truncation with no
+# indication would be a bad failure mode -- the response instead reports the
+# count it returned and, when the cap was hit, an explicit `truncated` flag
+# so the frontend can say older attempts exist but aren't shown, instead of
+# just quietly dropping them.
+HISTORY_LIMIT = 500
 
 
 @router.get("/history", response_model=HistoryOut)

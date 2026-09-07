@@ -1,10 +1,8 @@
 """Regression guard for spec constraint C3 (offline-capable): the React
 SPA's built output (frontend/dist) must never reference an external
 domain -- no CDN fonts, no CDN scripts, nothing fetched over the network
-at runtime. The v1 Jinja/HTMX/Alpine stack lost offline support exactly
-this way (a stray CDN reference nobody caught) -- see
-tests/test_web_static.py, which guards the old stack's vendored-assets
-story the same way this guards the new one's build output.
+at runtime. The v1 Jinja/HTMX/Alpine stack (since removed) lost offline
+support exactly this way, via a stray CDN reference nobody caught.
 
 frontend/dist is gitignored (it's a build artifact, per spec C5), so this
 test skips with a clear reason if it hasn't been built yet -- it is not a

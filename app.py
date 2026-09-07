@@ -88,7 +88,7 @@ def main() -> None:
     app = build_app(engine=engine)
     threading.Thread(
         target=_open_browser_when_ready,
-        args=(HOST, PORT, f"http://{HOST}:{PORT}/today"),
+        args=(HOST, PORT, f"http://{HOST}:{PORT}/"),
         daemon=True,
     ).start()
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")

@@ -38,7 +38,7 @@ def test_api_meta_happy_path_shape(engine):
 
     # All four outcomes, each with its label and review consequence, sourced
     # from services.attempts.OUTCOME_LABELS / OUTCOME_CONSEQUENCES -- the
-    # single source of truth the Jinja page's own filters read from too.
+    # single source of truth the React entry panel reads from too.
     assert len(body["outcomes"]) == 4
     by_value = {o["value"]: o for o in body["outcomes"]}
     for outcome in Outcome:

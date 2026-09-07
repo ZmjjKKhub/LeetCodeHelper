@@ -137,3 +137,26 @@ def test_api_today_no_active_topic_is_503_json(engine):
     body = response.json()
     assert "detail" in body
     assert "seed" in body["detail"]
+
+
+def test_api_today_unrelated_keyerror_is_500_not_disguised_as_no_active_topic(engine, monkeypatch):
+    # Ported from the deleted tests/test_web_today.py -- C1: the
+    # NoActiveTopic exception handler in app_factory.py is registered on
+    # NoActiveTopic specifically, *not* the bare LookupError it subclasses.
+    # LookupError is also the base class of KeyError and IndexError, so
+    # catching it broadly would silently relabel an unrelated internal bug
+    # (e.g. a raw dict/list subscript error anywhere in the request) as "you
+    # forgot to seed" (503) with its traceback destroyed, instead of
+    # surfacing as the 500 it actually is.
+    seed(engine, with_plan=True)
+
+    import leetcode_helper.api.routes.today as today_api_routes
+
+    def boom(*args, **kwargs):
+        raise KeyError("some unrelated bug")
+
+    monkeypatch.setattr(today_api_routes, "get_today_view", boom)
+
+    response = make_client(engine, raise_server_exceptions=False).get("/api/today")
+    assert response.status_code == 500
+    assert response.status_code != 503
