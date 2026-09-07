@@ -114,6 +114,57 @@ class MetaOut:
     outcomes: list[OutcomeOut]
 
 
+@dataclass(frozen=True)
+class ProgressPlanOut:
+    day_index: int
+    total_days: int
+    phase: str
+    planned_date: date_type
+
+
+@dataclass(frozen=True)
+class ProgressProblemOut:
+    lc_id: int
+    title: str
+    # "done" | "today" | "todo" -- see repositories/progress.py's ProblemState.
+    state: str
+    # Same None-when-unmappable rule as AttemptOut.outcome; always None when
+    # state != "done".
+    outcome: str | None
+
+
+@dataclass(frozen=True)
+class ProgressSectionOut:
+    section: str
+    section_name: str
+    total: int
+    done: int
+    problems: list[ProgressProblemOut]
+
+
+@dataclass(frozen=True)
+class ProgressStatsOut:
+    total: int
+    attempted: int
+    unsolved: int
+    first_try_ac_count: int
+    # Fraction in [0, 1], not a percentage -- the frontend formats it
+    # (Math.round(rate * 100)), same division of labour as HistoryOut.rows'
+    # per-row first_try_ac booleans, whose percentage the frontend already
+    # computes itself (see History.tsx).
+    first_try_ac_rate: float
+
+
+@dataclass(frozen=True)
+class ProgressOut:
+    topic: TopicOut
+    # None exactly when today falls outside any active plan (fallback mode) --
+    # see repositories/progress.py::ProgressView.plan.
+    plan: ProgressPlanOut | None
+    sections: list[ProgressSectionOut]
+    stats: ProgressStatsOut
+
+
 class AttemptCreateIn(BaseModel):
     """POST /api/attempts request body. Same semantics as the existing
     HTML form POST to /attempts (see web/routes/today.py) -- including

@@ -2,6 +2,7 @@ import type {
   AttemptCreateIn,
   HistoryOut,
   MetaOut,
+  ProgressOut,
   TodayItemOut,
   TodayOut,
 } from "./types";
@@ -62,6 +63,11 @@ export async function fetchToday(date?: string): Promise<TodayOut> {
 export async function fetchHistory(limit?: number): Promise<HistoryOut> {
   const url = limit ? `/api/history?limit=${limit}` : "/api/history";
   return getJson<HistoryOut>(url);
+}
+
+export async function fetchProgress(date?: string): Promise<ProgressOut> {
+  const url = date ? `/api/progress?date=${encodeURIComponent(date)}` : "/api/progress";
+  return getJson<ProgressOut>(url);
 }
 
 export async function postAttempt(body: AttemptCreateIn): Promise<TodayItemOut> {

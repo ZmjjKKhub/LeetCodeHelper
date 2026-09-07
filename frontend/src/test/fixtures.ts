@@ -2,6 +2,8 @@ import type {
   HistoryOut,
   MetaOut,
   ProblemOut,
+  ProgressOut,
+  ProgressSectionOut,
   TodayItemOut,
   TodayOut,
 } from "../api/types";
@@ -49,6 +51,33 @@ export function makeHistory(overrides: Partial<HistoryOut> = {}): HistoryOut {
     rows: [],
     limit: 500,
     truncated: false,
+    ...overrides,
+  };
+}
+
+export function makeProgress(overrides: Partial<ProgressOut> = {}): ProgressOut {
+  return {
+    topic: META.topic,
+    plan: {
+      day_index: 3,
+      total_days: 5,
+      phase: "阶段一 · 定长滑窗",
+      planned_date: "2026-09-02",
+    },
+    sections: [],
+    stats: { total: 0, attempted: 0, unsolved: 0, first_try_ac_count: 0, first_try_ac_rate: 0 },
+    ...overrides,
+  };
+}
+
+export function makeProgressSection(
+  overrides: Partial<ProgressSectionOut> & { section: string },
+): ProgressSectionOut {
+  return {
+    section_name: "定长滑动窗口 · 基础",
+    problems: [],
+    total: overrides.problems?.length ?? 0,
+    done: overrides.problems?.filter((p) => p.state === "done").length ?? 0,
     ...overrides,
   };
 }

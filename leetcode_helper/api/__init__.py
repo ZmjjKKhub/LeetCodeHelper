@@ -12,11 +12,13 @@ from fastapi import APIRouter
 
 from .routes import history as history_routes
 from .routes import meta as meta_routes
+from .routes import progress as progress_routes
 from .routes import today as today_routes
 
 router = APIRouter()
 router.include_router(today_routes.router)
 router.include_router(history_routes.router)
 router.include_router(meta_routes.router)
+router.include_router(progress_routes.router)
 
 __all__ = ["router"]

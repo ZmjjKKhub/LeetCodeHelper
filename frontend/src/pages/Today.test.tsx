@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TodayItemOut, TodayOut } from "../api/types";
-import { META, makeHistory, makeProblem, makeToday } from "../test/fixtures";
+import { META, makeProblem, makeProgress, makeProgressSection, makeToday } from "../test/fixtures";
 import { TodayPage } from "./Today";
 
 vi.mock("../api/client", async () => {
@@ -13,12 +13,12 @@ vi.mock("../api/client", async () => {
     ...actual,
     fetchMeta: vi.fn(),
     fetchToday: vi.fn(),
-    fetchHistory: vi.fn(),
+    fetchProgress: vi.fn(),
     postAttempt: vi.fn(),
   };
 });
 
-import { fetchHistory, fetchMeta, fetchToday, postAttempt } from "../api/client";
+import { fetchMeta, fetchProgress, fetchToday, postAttempt } from "../api/client";
 
 function renderToday() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -33,7 +33,8 @@ function renderToday() {
 
 beforeEach(() => {
   vi.mocked(fetchMeta).mockResolvedValue(META);
-  vi.mocked(fetchHistory).mockResolvedValue(makeHistory());
+  vi.mocked(fetchToday).mockResolvedValue(makeToday({ items: [] }));
+  vi.mocked(fetchProgress).mockResolvedValue(makeProgress());
 });
 
 afterEach(() => {
@@ -41,51 +42,61 @@ afterEach(() => {
 });
 
 describe("TodayPage -- progress panel", () => {
-  it("renders the progress cells grouped per section and the three stat readouts", async () => {
-    // 2 already-attempted problems (history) + 1 attempted-today problem,
-    // all "没做出来" (unsolved), in §1.1; plus a not-yet-done today item in
-    // §1.1 and one in §1.2 -- see lib/progress.ts's module doc for why the
-    // denominator here is "known cells" (done + today), not the topic's
-    // true total.
-    const historyRows = [
-      { problem: makeProblem({ id: 101, lc_id: 1001 }), date: "2026-08-31", duration_bucket: "unsolved" as const, mark: "C", submit_count: 1, used_template: "A", first_try_ac: false },
-      { problem: makeProblem({ id: 102, lc_id: 1002 }), date: "2026-08-31", duration_bucket: "unsolved" as const, mark: "C", submit_count: 1, used_template: "A", first_try_ac: false },
-    ];
-    const items: TodayItemOut[] = [
-      {
-        problem: makeProblem({ id: 103, lc_id: 1003 }),
-        time_limit_sec: 1200,
-        is_done: true,
-        derived_template: "A",
-        attempt: { outcome: "unsolved", submit_count: 1, used_template: "A" },
-      },
-      {
-        problem: makeProblem({ id: 104, lc_id: 1004 }),
-        time_limit_sec: 1200,
-        is_done: false,
-        derived_template: "A",
-        attempt: null,
-      },
-      {
-        problem: makeProblem({ id: 201, lc_id: 2001, section: "§1.2", section_name: "定长滑动窗口 · 进阶（选做）" }),
-        time_limit_sec: 1200,
-        is_done: false,
-        derived_template: "A",
-        attempt: null,
-      },
-    ];
-    vi.mocked(fetchToday).mockResolvedValue(makeToday({ items }));
-    vi.mocked(fetchHistory).mockResolvedValue(makeHistory({ rows: historyRows }));
+  it("renders one cell per problem grouped per section, with the right per-state counts", async () => {
+    // §1.1: 3 done (all "没做出来"/unsolved) + 1 todo = 4 problems, 3/4 done.
+    // §1.2: 1 todo = 1 problem, 0/1 done.
+    const section1 = makeProgressSection({
+      section: "§1.1",
+      problems: [
+        { lc_id: 1001, title: "题目1001", state: "done", outcome: "unsolved" },
+        { lc_id: 1002, title: "题目1002", state: "done", outcome: "unsolved" },
+        { lc_id: 1003, title: "题目1003", state: "done", outcome: "unsolved" },
+        { lc_id: 1004, title: "题目1004", state: "todo", outcome: null },
+      ],
+    });
+    const section2 = makeProgressSection({
+      section: "§1.2",
+      section_name: "定长滑动窗口 · 进阶（选做）",
+      problems: [{ lc_id: 2001, title: "题目2001", state: "todo", outcome: null }],
+    });
+    vi.mocked(fetchProgress).mockResolvedValue(
+      makeProgress({
+        sections: [section1, section2],
+        stats: { total: 5, attempted: 3, unsolved: 3, first_try_ac_count: 0, first_try_ac_rate: 0 },
+      }),
+    );
 
     renderToday();
 
     expect(await screen.findByText(/§1\.1.*3\/4/)).toBeInTheDocument();
     expect(await screen.findByText(/§1\.2.*0\/1/)).toBeInTheDocument();
+    expect(document.querySelectorAll('[title^="#"]')).toHaveLength(5);
 
     // 已做 3/5, 没做出来 3, 一次 AC 0%
     expect(screen.getByTestId("stat-done").textContent).toBe("3/5已做");
     expect(screen.getByTestId("stat-unsolved").textContent).toBe("3没做出来");
     expect(screen.getByTestId("stat-first-ac").textContent).toBe("0%一次 AC");
+  });
+
+  it("shows the day readout when a plan is active", async () => {
+    vi.mocked(fetchProgress).mockResolvedValue(
+      makeProgress({ plan: { day_index: 3, total_days: 5, phase: "阶段一", planned_date: "2026-09-02" } }),
+    );
+
+    renderToday();
+
+    expect(await screen.findByText(/第 3 天.*共 5 天/)).toBeInTheDocument();
+  });
+
+  it("omits the day readout when today falls outside any active plan", async () => {
+    vi.mocked(fetchProgress).mockResolvedValue(makeProgress({ plan: null }));
+
+    renderToday();
+
+    // Wait for the panel to render (via the always-present header label)
+    // before asserting on the readout's absence.
+    expect(await screen.findByText("专题进度 · 每格一题")).toBeInTheDocument();
+    expect(screen.queryByText(/第 \d+ 天/)).not.toBeInTheDocument();
   });
 });
 

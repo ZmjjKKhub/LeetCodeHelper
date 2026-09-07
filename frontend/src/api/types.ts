@@ -95,3 +95,46 @@ export interface AttemptCreateIn {
   submit_count?: number;
   used_template?: string | null;
 }
+
+// leetcode_helper/api/schemas.py::ProgressPlanOut. Present only when `today`
+// falls inside an active plan's PlanDay -- null in fallback mode.
+export interface ProgressPlanOut {
+  day_index: number;
+  total_days: number;
+  phase: string;
+  planned_date: string;
+}
+
+// leetcode_helper/api/schemas.py::ProgressProblemOut.
+export interface ProgressProblemOut {
+  lc_id: number;
+  title: string;
+  state: "done" | "today" | "todo";
+  // Same None-when-unmappable rule as AttemptOut.outcome; always null when
+  // state !== "done".
+  outcome: string | null;
+}
+
+export interface ProgressSectionOut {
+  section: string;
+  section_name: string;
+  total: number;
+  done: number;
+  problems: ProgressProblemOut[];
+}
+
+export interface ProgressStatsOut {
+  total: number;
+  attempted: number;
+  unsolved: number;
+  first_try_ac_count: number;
+  // Fraction in [0, 1] -- the frontend formats it as a percentage.
+  first_try_ac_rate: number;
+}
+
+export interface ProgressOut {
+  topic: TopicOut;
+  plan: ProgressPlanOut | null;
+  sections: ProgressSectionOut[];
+  stats: ProgressStatsOut;
+}

@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
-import { ApiError, fetchHistory, fetchMeta, fetchToday, postAttempt } from "../api/client";
+import { ApiError, fetchMeta, fetchProgress, fetchToday, postAttempt } from "../api/client";
 import type { AttemptCreateIn, TodayItemOut, TodayOut } from "../api/types";
 import { AppHeader } from "../components/AppHeader";
 import { ProblemRow } from "../components/ProblemRow";
 import { ProgressPanel } from "../components/ProgressPanel";
 import { BUCKET_LABELS } from "../lib/labels";
-import { buildProgress } from "../lib/progress";
 
 function Shell({ topicName, children }: { topicName?: string; children: ReactNode }) {
   return (
@@ -98,7 +97,11 @@ export function TodayPage() {
   const queryClient = useQueryClient();
   const metaQuery = useQuery({ queryKey: ["meta"], queryFn: fetchMeta, retry: false });
   const todayQuery = useQuery({ queryKey: ["today"], queryFn: () => fetchToday(), retry: false });
-  const historyQuery = useQuery({ queryKey: ["history"], queryFn: () => fetchHistory(), retry: false });
+  const progressQuery = useQuery({
+    queryKey: ["progress"],
+    queryFn: () => fetchProgress(),
+    retry: false,
+  });
 
   const [openId, setOpenId] = useState<number | null>(null);
 
@@ -107,6 +110,7 @@ export function TodayPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["today"] });
       queryClient.invalidateQueries({ queryKey: ["history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress"] });
       setOpenId(null);
     },
   });
@@ -144,7 +148,7 @@ export function TodayPage() {
 
   const meta = metaQuery.data!;
   const today = todayQuery.data!;
-  const summary = historyQuery.data ? buildProgress(today, historyQuery.data) : null;
+  const progress = progressQuery.data;
 
   const activeProblemId = mutation.variables?.problem_id ?? null;
   const submitErrorMessage =
@@ -177,7 +181,7 @@ export function TodayPage() {
 
   return (
     <Shell topicName={meta.topic.name}>
-      {summary && <ProgressPanel summary={summary} />}
+      {progress && <ProgressPanel progress={progress} />}
 
       <DateLine today={today} />
 
