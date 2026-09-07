@@ -1,0 +1,28 @@
+/* 由 design/build_palettes.py 生成，勿手改。
+   当前配色：Ember。换配色改 build_palettes.py 的 CHOSEN 后重跑。 */
+:root {
+  --alert: #c4826a;
+  --bg: #181613;
+  --border: #2c2822;
+  --border-soft: #24211c;
+  --border-strong: #3a352c;
+  --btn-border: #332e27;
+  --card: #1c1a16;
+  --cell-empty: #2b271f;
+  --dim: #756c5e;
+  --dim2: #675f53;
+  --easy: #8fa76a;
+  --hard: #c4826a;
+  --medium: #c19a5c;
+  --med-chip-bg: #2b2318;
+  --muted: #968c7c;
+  --nav-active: #29251e;
+  --panel: #1f1c18;
+  --sel-bg: #23281c;
+  --sel-border: #5a6b45;
+  --subpanel: #26221c;
+  --text: #e7e1d6;
+  --text-bright: #f5f0e6;
+  --text-soft: #b3aa9b;
+  --today-ring: #8a8072;
+}
