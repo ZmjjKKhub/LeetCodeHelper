@@ -1,19 +1,22 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import { SmokePage } from "./pages/Smoke";
+import { TodayPage } from "./pages/Today";
 
-// Scaffolding only -- the real Today/History/... pages come later (see the
-// design doc's frontend/src/pages list). FastAPI's catch-all
+// Mounted at basename="/app" (see main.tsx) -- FastAPI's catch-all
 // (leetcode_helper/web/app_factory.py) serves index.html for any path that
-// isn't /api, /today, /history or /static, so this SPA is reachable
-// side-by-side with the untouched Jinja pages at those same three paths --
-// it deliberately does not claim "/" (the Jinja app already redirects that
-// to /today) or "/today" / "/history" (still real Jinja pages) itself.
+// isn't /api, /today, /history or /static, but "/today" and "/history"
+// exact-match the still-live Jinja pages *first* (registered before the
+// catch-all) and so never reach this SPA at all. "/app" is therefore the
+// SPA's own root: Today lives at its "/" (-> served at /app), matching the
+// design artboard one level down from where a browser actually loads it,
+// without touching app_factory.py's routing or the Jinja pages it still
+// serves untouched at /today and /history. History joins at "/history" in
+// a follow-up commit.
 export default function App() {
   return (
     <Routes>
-      <Route path="/app" element={<SmokePage />} />
-      <Route path="*" element={<Navigate to="/app" replace />} />
+      <Route path="/" element={<TodayPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
