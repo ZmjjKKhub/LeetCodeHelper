@@ -43,6 +43,32 @@ _PAIR_TO_OUTCOME: dict[tuple[DurationBucket, Mark], Outcome] = {
     pair: outcome for outcome, pair in _OUTCOME_TO_PAIR.items()
 }
 
+# Chinese display label for each Outcome. Single source of truth: the Jinja
+# entry panel's done-row summary line (via app_factory.py's `outcome_label`
+# filter) and the JSON `/api/meta` endpoint both read this same dict instead
+# of each keeping their own copy of the strings.
+OUTCOME_LABELS: dict[Outcome, str] = {
+    Outcome.within_solid: "限时内做出来，思路清楚",
+    Outcome.within_shaky: "限时内，但靠硬套模板/蒙的",
+    Outcome.over: "超时才做出来",
+    Outcome.unsolved: "没做出来 / 看了题解",
+}
+assert set(OUTCOME_LABELS) == set(Outcome), "OUTCOME_LABELS 未覆盖所有 Outcome 枚举值"
+
+# The review consequence each outcome schedules -- 规格 §5 R1: A -> 不排复习,
+# B -> 2 轮复习（D+3、D+14）, C -> 4 轮复习（D+1、D+3、D+7、D+14）. This is a
+# domain rule, not view text, so it belongs next to _OUTCOME_TO_PAIR rather
+# than in the web layer. Both the Jinja entry panel's outcome-button `title`
+# tooltips (via app_factory.py's `outcome_consequence` filter) and the JSON
+# `/api/meta` endpoint read this same dict.
+OUTCOME_CONSEQUENCES: dict[Outcome, str] = {
+    Outcome.within_solid: "不排复习",
+    Outcome.within_shaky: "复习 2 轮（D+3、D+14）",
+    Outcome.over: "复习 2 轮（D+3、D+14）",
+    Outcome.unsolved: "复习 4 轮（D+1、D+3、D+7、D+14）",
+}
+assert set(OUTCOME_CONSEQUENCES) == set(Outcome), "OUTCOME_CONSEQUENCES 未覆盖所有 Outcome 枚举值"
+
 
 def split_outcome(outcome: Outcome) -> tuple[DurationBucket, Mark]:
     """The one four-option control's storage mapping. See the table above."""

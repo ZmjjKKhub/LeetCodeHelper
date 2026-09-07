@@ -8,17 +8,19 @@ from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine
 from sqlmodel import Session
 
+from leetcode_helper.api import router as api_router
 from leetcode_helper.db import get_engine
 from leetcode_helper.models import Attempt, DurationBucket
 from leetcode_helper.repositories.today import NoActiveTopic, get_problem_item, list_template_options
-from leetcode_helper.services.attempts import Outcome, outcome_of
+from leetcode_helper.services.attempts import OUTCOME_CONSEQUENCES, OUTCOME_LABELS, Outcome, outcome_of
 from leetcode_helper.web.routes import history as history_routes
 from leetcode_helper.web.routes import today as today_routes
 
@@ -42,20 +44,6 @@ BUCKET_LABELS: dict[DurationBucket, str] = {
 }
 assert set(BUCKET_LABELS) == set(DurationBucket), "BUCKET_LABELS 未覆盖所有 DurationBucket 枚举值"
 
-# Chinese display labels for the merged 用时/掌握程度 outcome control. Used
-# only for the done-row "已录入：..." summary line -- the four submit
-# buttons in the template carry their own literal Chinese text plus a
-# `title` tooltip, not this dict, since Jinja filters over an enum whose
-# `.value` differs from its label would be more indirection than the
-# template needs there.
-OUTCOME_LABELS: dict[Outcome, str] = {
-    Outcome.within_solid: "限时内做出来，思路清楚",
-    Outcome.within_shaky: "限时内，但靠硬套模板/蒙的",
-    Outcome.over: "超时才做出来",
-    Outcome.unsolved: "没做出来 / 看了题解",
-}
-assert set(OUTCOME_LABELS) == set(Outcome), "OUTCOME_LABELS 未覆盖所有 Outcome 枚举值"
-
 
 def format_limit(seconds: int) -> str:
     return f"{seconds // 60:02d}:{seconds % 60:02d}"
@@ -67,6 +55,19 @@ def format_bucket(bucket: DurationBucket) -> str:
 
 def format_outcome(outcome: Outcome) -> str:
     return OUTCOME_LABELS[outcome]
+
+
+def format_outcome_consequence(outcome: Outcome | str) -> str:
+    """Template-side wrapper over services.attempts.OUTCOME_CONSEQUENCES so
+    the outcome-button `title` tooltips read from the same single source of
+    truth /api/meta reports, instead of carrying their own literal copies of
+    the review-consequence text. The four buttons in
+    partials/_problem_row.html pass their own literal `value="..."` string
+    (not an Outcome instance) through this filter, so it accepts either.
+    """
+    if not isinstance(outcome, Outcome):
+        outcome = Outcome(outcome)
+    return OUTCOME_CONSEQUENCES[outcome]
 
 
 def attempt_outcome(attempt: Attempt) -> Outcome | None:
@@ -89,6 +90,7 @@ def create_app(
     templates.env.filters["limit"] = format_limit
     templates.env.filters["bucket_label"] = format_bucket
     templates.env.filters["outcome_label"] = format_outcome
+    templates.env.filters["outcome_consequence"] = format_outcome_consequence
     templates.env.filters["outcome_of"] = attempt_outcome
     app.state.templates = templates
 
@@ -99,7 +101,7 @@ def create_app(
         return RedirectResponse("/today")
 
     @app.exception_handler(NoActiveTopic)
-    def no_topic_configured(request: Request, exc: NoActiveTopic) -> HTMLResponse:
+    def no_topic_configured(request: Request, exc: NoActiveTopic) -> HTMLResponse | JSONResponse:
         # NoActiveTopic means "no active topic exists" -- most commonly
         # because the seed importer has never been run. That is an expected,
         # recoverable state for a fresh install, not a bug: surface it as a
@@ -113,13 +115,28 @@ def create_app(
         # relabel unrelated internal bugs (e.g. a raw dict/list subscript
         # error anywhere in the request) as "you forgot to seed" and destroy
         # their traceback.
+        #
+        # /api/* requests must get a JSON body, not an HTML fragment -- a
+        # JSON client (the React frontend this API exists for) has no HTML
+        # parser in its error path.
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": str(exc)}, status_code=503)
         return HTMLResponse(
             f"<h1>还没有可用的专题</h1><p>{html.escape(str(exc))}</p>",
             status_code=503,
         )
 
     @app.exception_handler(RequestValidationError)
-    async def form_validation_error(request: Request, exc: RequestValidationError) -> HTMLResponse:
+    async def form_validation_error(
+        request: Request, exc: RequestValidationError
+    ) -> HTMLResponse | JSONResponse:
+        # /api/* requests get FastAPI's own default JSON error body (a list
+        # of {loc, msg, type} error dicts under "detail") -- never the HTML
+        # this handler builds for the HTMX-driven form pages below. A JSON
+        # client has no use for an HTML fragment/page on a validation error.
+        if request.url.path.startswith("/api/"):
+            return await request_validation_exception_handler(request, exc)
+
         # A bogus enum value (e.g. outcome="Z") or a missing/non-numeric
         # problem_id fails FastAPI/Pydantic's own Form(...) coercion *before*
         # the route body runs -- routes/today.py's own try/except around
@@ -178,4 +195,5 @@ def create_app(
 
     app.include_router(today_routes.router)
     app.include_router(history_routes.router)
+    app.include_router(api_router, prefix="/api")
     return app

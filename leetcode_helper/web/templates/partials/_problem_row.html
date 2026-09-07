@@ -131,16 +131,16 @@
       <legend>今天做得怎么样？（点一下即保存）</legend>
       <div class="field-control">
         <div class="outcome-buttons">
-          <button type="submit" name="outcome" value="within_solid" title="不排复习"{% if current_outcome and current_outcome.value == "within_solid" %} aria-pressed="true" class="current"{% endif %}>
+          <button type="submit" name="outcome" value="within_solid" title="{{ 'within_solid' | outcome_consequence }}"{% if current_outcome and current_outcome.value == "within_solid" %} aria-pressed="true" class="current"{% endif %}>
             限时内做出来，思路清楚
           </button>
-          <button type="submit" name="outcome" value="within_shaky" title="复习 2 轮（D+3、D+14）"{% if current_outcome and current_outcome.value == "within_shaky" %} aria-pressed="true" class="current"{% endif %}>
+          <button type="submit" name="outcome" value="within_shaky" title="{{ 'within_shaky' | outcome_consequence }}"{% if current_outcome and current_outcome.value == "within_shaky" %} aria-pressed="true" class="current"{% endif %}>
             限时内，但靠硬套模板/蒙的
           </button>
-          <button type="submit" name="outcome" value="over" title="复习 2 轮（D+3、D+14）"{% if current_outcome and current_outcome.value == "over" %} aria-pressed="true" class="current"{% endif %}>
+          <button type="submit" name="outcome" value="over" title="{{ 'over' | outcome_consequence }}"{% if current_outcome and current_outcome.value == "over" %} aria-pressed="true" class="current"{% endif %}>
             超时才做出来
           </button>
-          <button type="submit" name="outcome" value="unsolved" title="复习 4 轮（D+1、D+3、D+7、D+14）"{% if current_outcome and current_outcome.value == "unsolved" %} aria-pressed="true" class="current"{% endif %}>
+          <button type="submit" name="outcome" value="unsolved" title="{{ 'unsolved' | outcome_consequence }}"{% if current_outcome and current_outcome.value == "unsolved" %} aria-pressed="true" class="current"{% endif %}>
             没做出来 / 看了题解
           </button>
         </div>
