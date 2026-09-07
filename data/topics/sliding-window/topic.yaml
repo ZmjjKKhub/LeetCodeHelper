@@ -15,9 +15,24 @@ card_fields:
   - {key: shrink_condition, label: 收缩条件, type: text}
   - {key: count_timing,     label: 统计时机, type: choice, options: [入窗后, 出窗循环内, 出窗循环外]}
 
-# 题单按模板分节：§1 定长滑窗全部用模板 A；§2.1 求最长用 B；§2.2 求最短用 C；
-# §2.3 求个数用 D。按最长前缀匹配解析（services/topics.py::resolve_section_template），
-# 所以 §1.1/§1.2 都落到这里的 "§1"。取代逐题手标 default_template——见
-# problems.yaml 顶部注释和 seed/bundle.py::_parse_problems。
+# 题单按模板分节，按最长前缀匹配解析（services/topics.py::
+# resolve_section_template），所以 §1.1/§1.2 都落到 "§1"：
+#   §1    定长滑窗                       -> A
+#   §2.1  越短越合法/求最长/最大          -> B
+#   §2.2  越长越合法/求最短/最小          -> C
+#   §2.3  求子数组个数                    -> D
+#   §3.1  反转字符串（相向双指针的最简形态）-> E
+#   §3.2  相向双指针                      -> E
+#   §6    分组循环                        -> F
+# 其余小节（§2.4、§3.3-§3.6、§4.x、§5）故意不写：使用者还没为这些写法准备
+# 模板，default_template 解出 None 是设计好的结果，不是漏配。
+# 取代逐题手标 default_template——见 problems.yaml 顶部注释和
+# seed/bundle.py::_parse_problems。
 section_templates:
   "§1": A
+  "§2.1": B
+  "§2.2": C
+  "§2.3": D
+  "§3.1": E
+  "§3.2": E
+  "§6": F
